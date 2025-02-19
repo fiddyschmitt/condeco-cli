@@ -100,11 +100,20 @@ namespace condeco_cli
                                 }
                                 else
                                 {
-                                    //if (bookingResponse.BookingResponse.CallResponse.ResponseCode == "5014")
+                                    if (bookingResponse.BookingResponse.CallResponse.ResponseCode == "5014")
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"You already have this desk booked.");
+                                        Console.ForegroundColor = OriginalConsoleColour;
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"{bookingResponse.BookingResponse.CallResponse.ResponseCode}: {bookingResponse.BookingResponse.CallResponse.ResponseMessage}");
+                                        Console.ForegroundColor = OriginalConsoleColour;
+                                    }
 
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine($"{bookingResponse.BookingResponse.CallResponse.ResponseCode}: {bookingResponse.BookingResponse.CallResponse.ResponseMessage}");
-                                    Console.ForegroundColor = OriginalConsoleColour;
+
                                 }
                             }
 
