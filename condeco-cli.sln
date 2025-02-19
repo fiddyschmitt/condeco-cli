@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34511.84
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "condeco-cli", "condeco-cli\condeco-cli.csproj", "{8CC67640-4525-49A0-9CBA-CE666AEE1BF6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8CC67640-4525-49A0-9CBA-CE666AEE1BF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8CC67640-4525-49A0-9CBA-CE666AEE1BF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8CC67640-4525-49A0-9CBA-CE666AEE1BF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8CC67640-4525-49A0-9CBA-CE666AEE1BF6}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B06DEF2C-FD12-4E72-BAFB-657389EAE17D}
+	EndGlobalSection
+EndGlobal
