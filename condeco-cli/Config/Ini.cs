@@ -62,7 +62,7 @@ namespace condeco_cli.Config
                         var key = new Key()
                         {
                             KeyName = tokens[0],
-                            Value = tokens.Skip(1).ToString("")
+                            Value = tokens.Skip(1).ToString("=")
                         };
 
                         curentSection?.Keys.Add(key);
