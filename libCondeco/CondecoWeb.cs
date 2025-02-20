@@ -1,4 +1,5 @@
-﻿using HtmlAgilityPack;
+﻿using condeco_cli.Extensions;
+using HtmlAgilityPack;
 using libCondeco.Model.Queries;
 using libCondeco.Model.Responses;
 using libCondeco.Model.Space;
@@ -248,6 +249,41 @@ namespace libCondeco
             postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: 128}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/webapi/BookingGrid/GetGridSettings", postContent, Path.Combine(outputFolder, "GetGridSettings.json"));
 
+            var grid = GetGrid();
+            if (grid != null)
+            {
+                //iterate through all areas to get all rooms
+                foreach (var country in grid.Countries)
+                    foreach (var location in country.Locations)
+                        foreach (var group in location.Groups)
+                            foreach (var floor in group.Floors)
+                                foreach (var workspaceType in floor.WorkspaceTypes)
+                                {
+                                    var postStr = $$"""
+                                                    {
+                                                      "CountryId": {{country.Id}},
+                                                      "LocationId": {{location.Id}},
+                                                      "GroupId": {{group.Id}},
+                                                      "FloorId": {{floor.Id}},
+                                                      "WStypeId": {{workspaceType.Id}},
+                                                      "UserLongId": "{{userIdLong}}",
+                                                      "UserId": {{userId}},
+                                                      "ViewType": 2,
+                                                      "LanguageId": 1,
+                                                      "ResourceType": 128,
+                                                      "StartDate": "{{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}}"
+                                                    }
+                                                    """;
+                                    postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
+
+                                    var filename = $"GetFilteredGridSettings - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
+                                    filename = filename.ReplaceInvalidChars("-");
+                                    Path.Combine(outputFolder, filename);
+
+                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredGridSettings", postContent, Path.Combine(outputFolder, filename));
+                                }
+            }
+
 
             //cookies
             var cookiesStr = clientHandler
@@ -259,6 +295,8 @@ namespace libCondeco
 
         public static void GetJson(HttpClient client, string url, string saveToFilename)
         {
+            Console.WriteLine($"Retrieving: {url}");
+
             string str;
             try
             {
@@ -275,6 +313,8 @@ namespace libCondeco
 
         public static void GetJson(HttpClient client, string url, HttpContent postContent, string saveToFilename)
         {
+            Console.WriteLine($"Retrieving: {url}");
+
             string str;
             try
             {
