@@ -15,6 +15,12 @@ namespace condeco_cli
             Console.WriteLine($"{PROGRAM_NAME} {PROGRAM_VERSION}");
             Console.WriteLine();
 
+            if (args.Length == 0)
+            {
+                CreateDefaultConfigFile();
+                Environment.Exit(0);
+            }
+
             Parser.Default.ParseArguments<AutoBookOptions, AutoCheckinOptions>(args)
                 .WithParsed<AutoBookOptions>(RunAutoBook)
                 .WithParsed<AutoCheckinOptions>(RunAutoCheckin)
@@ -140,16 +146,23 @@ namespace condeco_cli
             Console.WriteLine($"Not implemented.");
         }
 
+        static void CreateDefaultConfigFile()
+        {
+            if (!File.Exists(DefaultConfigFilename))
+            {
+                Console.WriteLine($"Created default config file: {DefaultConfigFilename}");
+                File.WriteAllText(DefaultConfigFilename, ExampleConfig.ExampleString);
+                Console.WriteLine($"Please populate {DefaultConfigFilename} with values.");
+                Console.WriteLine("Exiting.");
+                Environment.Exit(1);
+            }
+        }
+
         static Ini LoadConfig(string configFilename)
         {
             if (string.IsNullOrEmpty(configFilename) && !File.Exists(DefaultConfigFilename))
             {
-                Console.WriteLine($"{DefaultConfigFilename} did not exist. Created example.");
-                File.WriteAllText(DefaultConfigFilename, ExampleConfig.ExampleString);
-                Console.WriteLine($"Please populate {DefaultConfigFilename} with values.");
-                Console.WriteLine("Exiting.");
-
-                Environment.Exit(1);
+                CreateDefaultConfigFile();
             }
 
             if (string.IsNullOrEmpty(configFilename))
