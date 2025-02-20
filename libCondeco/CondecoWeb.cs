@@ -275,6 +275,13 @@ namespace libCondeco
             postContent = new StringContent($@"{{UserID: {userId}, LongUserId: ""{userIdLong}""}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/webapi/GridDateSelection/ReturnGeoInformation", postContent, Path.Combine(outputFolder, "ReturnGeoInformation.json"));
 
+            //cookies
+            var cookiesStr = clientHandler
+                                .CookieContainer
+                                .GetAllCookies()
+                                .ToJson(true);
+            File.WriteAllText(Path.Combine(outputFolder, "cookies.json"), cookiesStr);
+
             var distinctResouceIds = AppSettings?
                                         .WorkspaceTypes
                                         .Select(wt => wt.ResourceId)
@@ -328,13 +335,8 @@ namespace libCondeco
                                 }
             }
 
-
-            //cookies
-            var cookiesStr = clientHandler
-                                .CookieContainer
-                                .GetAllCookies()
-                                .ToJson(true);
-            File.WriteAllText(Path.Combine(outputFolder, "cookies.json"), cookiesStr);
+            Console.WriteLine($"Dump complete.");
+            Console.WriteLine($"Wrote to folder: {outputFolder}");
         }
 
         public static void GetJson(HttpClient client, string url, string saveToFilename)

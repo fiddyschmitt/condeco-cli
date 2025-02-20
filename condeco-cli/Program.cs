@@ -21,9 +21,9 @@ namespace condeco_cli
                 Environment.Exit(0);
             }
 
-            Parser.Default.ParseArguments<AutoBookOptions, AutoCheckinOptions>(args)
+            Parser.Default.ParseArguments<AutoBookOptions, DumpOptions>(args)
                 .WithParsed<AutoBookOptions>(RunAutoBook)
-                .WithParsed<AutoCheckinOptions>(RunAutoCheckin)
+                .WithParsed<DumpOptions>(RunDump)
                 .WithNotParsed(errors => Console.WriteLine("Invalid command or arguments."));
         }
 
@@ -38,8 +38,6 @@ namespace condeco_cli
 
             if (LoggedIn)
             {
-                //condecoWeb.Dump();
-
                 foreach (var section in config.Sections)
                 {
                     if (section.SectionName.Equals("Book", StringComparison.OrdinalIgnoreCase))
@@ -138,12 +136,26 @@ namespace condeco_cli
             }
         }
 
-        static void RunAutoCheckin(AutoCheckinOptions opts)
+        static void RunDump(DumpOptions opts)
         {
-            //The server specifies when checkin is possible.
-            //    grid.Settings.DeskSettings.CheckInAMTime
-            //    grid.Settings.DeskSettings.CheckInPMTime
-            Console.WriteLine($"Not implemented.");
+            var config = LoadConfig(opts.Config);
+
+            var condecoWeb = new CondecoWeb(config["Account"]["BaseUrl"]);
+            var (LoggedIn, ErrorMessage) = condecoWeb.LogIn(
+                                                        config["Account"]["Username"],
+                                                        config["Account"]["Password"]);
+
+            if (LoggedIn)
+            {
+                condecoWeb.Dump();
+            }
+            else
+            {
+                Console.WriteLine($"Login unsuccessful.");
+                Console.WriteLine(ErrorMessage);
+                Console.WriteLine("Terminating.");
+                Environment.Exit(1);
+            }
         }
 
         static void CreateDefaultConfigFile()
