@@ -31,7 +31,13 @@ namespace libCondeco.Model.Queries
 
     public class DeskSettings
     {
+        //the window in which desks can be booked
         public DateTime StartDate;
         public DateTime EndDate;
+
+        public bool IncludeWeekends;
+
+        public string CheckInAMTime = "";
+        public string CheckInPMTime = "";
     }
 }

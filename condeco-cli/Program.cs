@@ -133,7 +133,10 @@ namespace condeco_cli
 
         static void RunAutoCheckin(AutoCheckinOptions opts)
         {
-            Console.WriteLine($"Running AutoCheckin with config: {opts.Config}");
+            //The server specifies when checkin is possible.
+            //    grid.Settings.DeskSettings.CheckInAMTime
+            //    grid.Settings.DeskSettings.CheckInPMTime
+            Console.WriteLine($"Not implemented.");
         }
 
         static Ini LoadConfig(string configFilename)
