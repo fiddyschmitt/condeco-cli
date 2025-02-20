@@ -13,10 +13,10 @@ namespace libCondeco.Model.Responses
         public CallResponse CallResponse = new();
         public List<CreatedBooking> CreatedBookings = [];
 
-        public static BookingResponse FromServerResponse(string jsonString)
+        public static BookingResponse FromServerResponse(string jsonStr)
         {
-            var result = JsonConvert.DeserializeObject<BookingResponse>(jsonString)
-                            ?? throw new Exception($"Could not deserialize string to BookingResponse:{Environment.NewLine}{jsonString}");
+            var result = JsonConvert.DeserializeObject<BookingResponse>(jsonStr)
+                            ?? throw new Exception($"Could not deserialize string to {nameof(BookingResponse)}:{Environment.NewLine}{jsonStr}");
 
             return result;
         }

@@ -143,12 +143,12 @@ namespace libCondeco
                             "startDate": "{{dateStr}}"
                         }
                     ],
-                    "deskID": {{room.Id}},
+                    "deskID": {{room.RoomId}},
                     "floorID": {{room.FloorId}},
                     "groupID": {{room.GroupId}},
                     "locationID": {{room.LocationId}},
                     "pagingEnabled": false,
-                    "wsType": {{room.WorkspaceTypeId}}
+                    "wsType": {{room.WSTypeId}}
                 }
                 """;
 

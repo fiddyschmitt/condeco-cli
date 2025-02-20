@@ -1,4 +1,5 @@
 ﻿using libCondeco.Model.Space;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -15,24 +16,17 @@ namespace libCondeco.Model.Queries
         public List<Room> Rooms = [];
         public static RoomsResponse FromServerResponse(int countryId, int locationId, int groupId, int floorId, string jsonStr)
         {
-            var obj = JObject.Parse(jsonStr);
+            var result = JsonConvert.DeserializeObject<RoomsResponse>(jsonStr)
+                            ?? throw new Exception($"Could not deserialize string to {nameof(RoomsResponse)}:{Environment.NewLine}{jsonStr}");
 
-            var result = new RoomsResponse()
+            //populate the extra metadata
+            foreach (var room in result.Rooms)
             {
-                Rooms = obj["Rooms"]?
-                                .Select(room => new Room()
-                                {
-                                    Id = room["RoomId"]?.Value<int>() ?? 0,
-                                    Name = room["Name"]?.Value<string>() ?? "",
-                                    WorkspaceTypeId = room["WSTypeId"]?.Value<int>() ?? 0,
-
-                                    CountryId = countryId,
-                                    LocationId = locationId,
-                                    GroupId = groupId,
-                                    FloorId = floorId,
-                                })
-                                .ToList() ?? []
-            };
+                room.CountryId = countryId;
+                room.LocationId = locationId;
+                room.GroupId = groupId;
+                room.FloorId = floorId;
+            }
 
             return result;
         }
