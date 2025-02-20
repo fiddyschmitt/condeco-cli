@@ -245,7 +245,6 @@ namespace libCondeco
             postContent = new StringContent($@"{{UserID: {userId}, LongUserId: ""{userIdLong}""}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/webapi/GridDateSelection/ReturnGeoInformation", postContent, Path.Combine(outputFolder, "ReturnGeoInformation.json"));
 
-            //todo: Is ResourceType always 128?
             postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: 128}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/webapi/BookingGrid/GetGridSettings", postContent, Path.Combine(outputFolder, "GetGridSettings.json"));
 
