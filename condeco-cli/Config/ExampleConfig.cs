@@ -4,13 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace condeco_cli.CLI
+namespace condeco_cli.Config
 {
     public static class ExampleConfig
     {
         public static string ExampleString = """
 [Account]
-BaseUrl=https://acme.condeco.com
+BaseUrl=https://acme.condecosoftware.com
 Username=
 Password=
 
