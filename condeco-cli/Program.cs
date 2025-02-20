@@ -33,13 +33,6 @@ namespace condeco_cli
             if (LoggedIn)
             {
                 //condecoWeb.Dump();
-                var grid = condecoWeb.GetGrid();
-
-                if (grid == null)
-                {
-                    Console.WriteLine($"Could not retrieve booking grid. Exiting.");
-                    Environment.Exit(1);
-                }
 
                 foreach (var section in config.Sections)
                 {
@@ -49,7 +42,7 @@ namespace condeco_cli
                         var location = section["Location"];
                         var group = section["Group"];
                         var floor = section["Floor"];
-                        var workspaceType = section["WorkspaceType"];
+                        var workspaceTypeName = section["WorkspaceType"];
                         var desk = section["Desk"];
 
                         var daysToBook = section["Days"]?
@@ -58,7 +51,15 @@ namespace condeco_cli
                                             .Where(day => day.HasValue)
                                             .ToList() ?? [];
 
-                        var rooms = condecoWeb.GetRooms(grid, country, location, group, floor, workspaceType);
+                        var grid = condecoWeb.GetGrid(workspaceTypeName);
+
+                        if (grid == null)
+                        {
+                            Console.WriteLine($"Could not retrieve booking grid. Exiting.");
+                            Environment.Exit(1);
+                        }
+
+                        var rooms = condecoWeb.GetRooms(grid, country, location, group, floor, workspaceTypeName);
 
                         if (rooms == null)
                         {

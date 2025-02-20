@@ -23,6 +23,7 @@ namespace libCondeco
         //Session-related info
         string? userId;
         string? userIdLong;
+        GetAppSettingResponse? AppSettings;     //app settings as provided by web server
 
         public CondecoWeb(string baseUrl)
         {
@@ -81,6 +82,7 @@ namespace libCondeco
                     return (false, $"Could not extract UserId from HTML");
                 }
 
+                //retrieve the userIdLong from the cookie
                 userIdLong = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["CONDECO"]?.Value.Split("=").Last();
                 if (userIdLong == null)
                 {
@@ -118,6 +120,9 @@ namespace libCondeco
                 //use the eliteSessionToken for future requests
                 client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", eliteSessionToken);
 
+                //collect the App Settings
+                var appSettingsJson = client.GetStringAsync($"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}").Result;
+                AppSettings = GetAppSettingResponse.FromServerResponse(appSettingsJson);
 
 
                 loginSuccessful = true;
@@ -166,12 +171,35 @@ namespace libCondeco
             return (false, condecoBookingResponse);
         }
 
-        public GridResponse? GetGrid()
+        public GridResponse? GetGrid(string workstationTypeName)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var userLongId = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["CONDECO"]?.Value.Split("=").Last();
-            var postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userLongId}"", ResourceType: 128}}", Encoding.UTF8, "application/json");
+            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase))?.ResourceId
+                                    ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeName: {workstationTypeName}");
+
+            var result = GetGrid(resourceTypeId);
+
+            return result;
+        }
+
+        public GridResponse? GetGridByWorkstationType(int workstationTypeId)
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == workstationTypeId)?.ResourceId
+                                    ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {workstationTypeId}");
+
+            var result = GetGrid(resourceTypeId);
+
+            return result;
+        }
+
+        public GridResponse? GetGrid(int resourceTypeId)
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: {resourceTypeId}}}", Encoding.UTF8, "application/json");
 
             var postResponse = client.PostAsync("/webapi/BookingGrid/GetGridSettings", postContent).Result;
 
@@ -199,6 +227,8 @@ namespace libCondeco
 
             var workspaceType = floor.WorkspaceTypes.FirstOrDefault(wspType => wspType.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Workspace Type not found: {workstationTypeName}");
 
+            var workspaceTypeDefinition = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Workspace Definition not found for: {workstationTypeName}");
+
             var postStr = $$"""
                 {
                   "CountryId": {{country.Id}},
@@ -210,7 +240,7 @@ namespace libCondeco
                   "UserId": {{userId}},
                   "ViewType": 2,
                   "LanguageId": 1,
-                  "ResourceType": 128,
+                  "ResourceType": {{workspaceTypeDefinition.ResourceId}},
                   "StartDate": "{{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}}"
                 }
                 """;
@@ -245,19 +275,34 @@ namespace libCondeco
             postContent = new StringContent($@"{{UserID: {userId}, LongUserId: ""{userIdLong}""}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/webapi/GridDateSelection/ReturnGeoInformation", postContent, Path.Combine(outputFolder, "ReturnGeoInformation.json"));
 
-            postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: 128}}", Encoding.UTF8, "application/json");
-            GetJson(client, $"/webapi/BookingGrid/GetGridSettings", postContent, Path.Combine(outputFolder, "GetGridSettings.json"));
+            var distinctResouceIds = AppSettings?
+                                        .WorkspaceTypes
+                                        .Select(wt => wt.ResourceId)
+                                        .Distinct()
+                                        .ToList() ?? [];
 
-            var grid = GetGrid();
-            if (grid != null)
+            //iterate through all areas to get all rooms
+            foreach (var resourceId in distinctResouceIds)
             {
-                //iterate through all areas to get all rooms
+                postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: {resourceId}}}", Encoding.UTF8, "application/json");
+                GetJson(client, $"/webapi/BookingGrid/GetGridSettings", postContent, Path.Combine(outputFolder, $"GetGridSettings - ResourceTypeId {resourceId}.json"));
+
+                var grid = GetGrid(resourceId);
+                if (grid == null)
+                {
+                    Console.WriteLine($"Could not retrieve grid for ResourceId: {resourceId}");
+                    continue;
+                }
+
                 foreach (var country in grid.Countries)
                     foreach (var location in country.Locations)
                         foreach (var group in location.Groups)
                             foreach (var floor in group.Floors)
                                 foreach (var workspaceType in floor.WorkspaceTypes)
                                 {
+                                    var resId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == workspaceType.Id)?.ResourceId;
+                                    if (resId == null) continue;
+
                                     var postStr = $$"""
                                                     {
                                                       "CountryId": {{country.Id}},
@@ -269,13 +314,13 @@ namespace libCondeco
                                                       "UserId": {{userId}},
                                                       "ViewType": 2,
                                                       "LanguageId": 1,
-                                                      "ResourceType": 128,
+                                                      "ResourceType": {{resId}},
                                                       "StartDate": "{{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}}"
                                                     }
                                                     """;
                                     postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
 
-                                    var filename = $"GetFilteredGridSettings - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
+                                    var filename = $"GetFilteredGridSettings - ResourceTypeId {resourceId} - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
                                     filename = filename.ReplaceInvalidChars("-");
                                     Path.Combine(outputFolder, filename);
 

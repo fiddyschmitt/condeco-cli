@@ -17,6 +17,8 @@ namespace libCondeco.Model.Queries
 
         public static GridResponse FromServerResponse(string jsonStr)
         {
+            if (string.IsNullOrEmpty(jsonStr)) return new();
+
             var result = JsonConvert.DeserializeObject<GridResponse>(jsonStr)
                             ?? throw new Exception($"Could not deserialize string to {nameof(Settings)}:{Environment.NewLine}{jsonStr}");
 
