@@ -15,7 +15,7 @@ namespace condeco_cli
             Console.WriteLine($"{PROGRAM_NAME} {PROGRAM_VERSION}");
             Console.WriteLine();
 
-            if (args.Length == 0)
+            if (args.Length == 0 && !File.Exists(DefaultConfigFilename))
             {
                 CreateDefaultConfigFile();
                 Environment.Exit(0);
