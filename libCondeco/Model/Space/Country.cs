@@ -9,8 +9,8 @@ namespace libCondeco.Model.Space
     public class Country
     {
         public int Id;
-        public string Name;
+        public string Name = "";
 
-        public List<Location> Locations;
+        public List<Location> Locations = [];
     }
 }

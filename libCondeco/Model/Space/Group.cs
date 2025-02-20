@@ -9,8 +9,8 @@ namespace libCondeco.Model.Space
     public class Group
     {
         public int Id;
-        public string Name;
+        public string Name = "";
 
-        public List<Floor> Floors;
+        public List<Floor> Floors = [];
     }
 }

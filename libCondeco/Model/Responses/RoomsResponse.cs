@@ -12,7 +12,7 @@ namespace libCondeco.Model.Queries
 {
     public class RoomsResponse
     {
-        public List<Room> Rooms;
+        public List<Room> Rooms = [];
         public static RoomsResponse FromServerResponse(int countryId, int locationId, int groupId, int floorId, string jsonStr)
         {
             var obj = JObject.Parse(jsonStr);

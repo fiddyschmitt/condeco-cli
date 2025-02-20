@@ -9,8 +9,8 @@ namespace libCondeco.Model.Space
     public class Location
     {
         public int Id;
-        public string Name;
+        public string Name = "";
 
-        public List<Group> Groups;
+        public List<Group> Groups = [];
     }
 }

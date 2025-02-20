@@ -9,7 +9,7 @@ namespace libCondeco.Model.Space
     public class Room
     {
         public int Id;
-        public string Name;
+        public string Name = "";
         public int WorkspaceTypeId;
 
         public int CountryId;

@@ -9,6 +9,6 @@ namespace libCondeco.Model.Space
     public class WorkspaceType
     {
         public int Id;
-        public string Name;
+        public string Name = "";
     }
 }

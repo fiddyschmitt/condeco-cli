@@ -1,9 +1,7 @@
 ﻿using CommandLine;
 using condeco_cli.CLI;
-using IniParser;
-using IniParser.Model;
+using condeco_cli.Config;
 using libCondeco;
-using System.Security.Policy;
 
 namespace condeco_cli
 {
@@ -15,10 +13,11 @@ namespace condeco_cli
         static void Main(string[] args)
         {
             Console.WriteLine($"{PROGRAM_NAME} {PROGRAM_VERSION}");
+            Console.WriteLine();
 
             Parser.Default.ParseArguments<AutoBookOptions, AutoCheckinOptions>(args)
-                .WithParsed<AutoBookOptions>(opts => RunAutoBook(opts))
-                .WithParsed<AutoCheckinOptions>(opts => RunAutoCheckin(opts))
+                .WithParsed<AutoBookOptions>(RunAutoBook)
+                .WithParsed<AutoCheckinOptions>(RunAutoCheckin)
                 .WithNotParsed(errors => Console.WriteLine("Invalid command or arguments."));
         }
 
@@ -27,11 +26,11 @@ namespace condeco_cli
             var config = LoadConfig(opts.Config);
 
             var condecoWeb = new CondecoWeb(config["Account"]["BaseUrl"]);
-            var (Success, ErrorMessage) = condecoWeb.LogIn(
+            var (LoggedIn, ErrorMessage) = condecoWeb.LogIn(
                                                         config["Account"]["Username"],
                                                         config["Account"]["Password"]);
 
-            if (Success)
+            if (LoggedIn)
             {
                 //condecoWeb.Dump();
                 var grid = condecoWeb.GetGrid();
@@ -46,19 +45,18 @@ namespace condeco_cli
                 {
                     if (section.SectionName.Equals("Book", StringComparison.OrdinalIgnoreCase))
                     {
-                        var country = section.Keys["Country"];
-                        var location = section.Keys["Location"];
-                        var group = section.Keys["Group"];
-                        var floor = section.Keys["Floor"];
-                        var workspaceType = section.Keys["WorkspaceType"];
-                        var desk = section.Keys["Desk"];
+                        var country = section["Country"];
+                        var location = section["Location"];
+                        var group = section["Group"];
+                        var floor = section["Floor"];
+                        var workspaceType = section["WorkspaceType"];
+                        var desk = section["Desk"];
 
-                        var daysToBook = section
-                                    .Keys["Days"]
-                                    .Split(",", StringSplitOptions.TrimEntries)
-                                    .Select(day => Enum.TryParse(day.Trim(), true, out DayOfWeek parsedDay) ? parsedDay : (DayOfWeek?)null)
-                                    .Where(day => day.HasValue)
-                                    .ToList();
+                        var daysToBook = section["Days"]?
+                                            .Split(",", StringSplitOptions.TrimEntries)
+                                            .Select(day => Enum.TryParse(day.Trim(), true, out DayOfWeek parsedDay) ? parsedDay : (DayOfWeek?)null)
+                                            .Where(day => day.HasValue)
+                                            .ToList() ?? [];
 
                         var rooms = condecoWeb.GetRooms(grid, country, location, group, floor, workspaceType);
 
@@ -88,7 +86,7 @@ namespace condeco_cli
                             if (daysToBook.Contains(date.DayOfWeek))
                             {
                                 Console.ForegroundColor = OriginalConsoleColour;
-                                Console.Write($"Booking {date}: ");
+                                Console.Write($"Booking {room.Name} for {date:dd/MM/yyyy}: ");
 
                                 var bookingResponse = condecoWeb.BookRoom(room, date);
 
@@ -112,16 +110,15 @@ namespace condeco_cli
                                         Console.WriteLine($"{bookingResponse.BookingResponse.CallResponse.ResponseCode}: {bookingResponse.BookingResponse.CallResponse.ResponseMessage}");
                                         Console.ForegroundColor = OriginalConsoleColour;
                                     }
-
-
                                 }
                             }
 
                             i++;
                         }
+
+                        Console.WriteLine();
                     }
                 }
-
 
                 condecoWeb.LogOut();
             }
@@ -139,7 +136,7 @@ namespace condeco_cli
             Console.WriteLine($"Running AutoCheckin with config: {opts.Config}");
         }
 
-        static IniData LoadConfig(string configFilename)
+        static Ini LoadConfig(string configFilename)
         {
             if (string.IsNullOrEmpty(configFilename) && !File.Exists(DefaultConfigFilename))
             {
@@ -156,12 +153,10 @@ namespace condeco_cli
                 configFilename = DefaultConfigFilename;
             }
 
-            var parser = new FileIniDataParser();
-            parser.Parser.Configuration.AllowDuplicateSections = true;
-            parser.Parser.Configuration.AllowDuplicateKeys = true;
-            var data = parser.ReadFile(configFilename);
+            var ini = new Ini();
+            ini.Parse(File.ReadAllText(configFilename));
 
-            if (string.IsNullOrEmpty(data["Account"]["Username"]))
+            if (string.IsNullOrEmpty(ini["Account"]["Username"]))
             {
                 Console.WriteLine($"Please populate {DefaultConfigFilename} with values.");
                 Console.WriteLine("Exiting.");
@@ -169,7 +164,7 @@ namespace condeco_cli
                 Environment.Exit(1);
             }
 
-            return data;
+            return ini;
         }
 
         public static readonly ConsoleColor OriginalConsoleColour = Console.ForegroundColor;

@@ -12,8 +12,8 @@ namespace libCondeco.Model.Queries
 {
     public class GridResponse
     {
-        public List<Country> Countries;
-        public Settings Settings;
+        public List<Country> Countries = [];
+        public Settings Settings = new();
 
         public static GridResponse FromServerResponse(string jsonStr)
         {
@@ -78,7 +78,7 @@ namespace libCondeco.Model.Queries
 
     public class Settings
     {
-        public DeskSettings DeskSettings;
+        public DeskSettings DeskSettings = new();
     }
 
     public class DeskSettings

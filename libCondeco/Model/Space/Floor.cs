@@ -9,8 +9,8 @@ namespace libCondeco.Model.Space
     public class Floor
     {
         public int Id;
-        public string Name;
+        public string Name = "";
 
-        public List<WorkspaceType> WorkspaceTypes;
+        public List<WorkspaceType> WorkspaceTypes = [];
     }
 }
