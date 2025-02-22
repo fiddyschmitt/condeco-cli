@@ -10,9 +10,9 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace condeco_cli.Config
 {
-    public class Ini
+    public partial class Ini
     {
-        public List<Section> Sections = new();
+        public List<Section> Sections = [];
 
         public Ini()
         {
@@ -29,8 +29,8 @@ namespace condeco_cli.Config
 
         public void Parse(string iniContent)
         {
-            var lines = Regex
-                            .Split(iniContent, "\r\n|\r|\n")
+            var lines = CarriageReturnRegex()
+                            .Split(iniContent)
                             .ToList();
 
             Section? curentSection = null;
@@ -39,7 +39,7 @@ namespace condeco_cli.Config
                 var line = lines[i].Trim();
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                if (line.StartsWith("["))
+                if (line.StartsWith('['))
                 {
                     if (curentSection != null)
                     {
@@ -47,7 +47,7 @@ namespace condeco_cli.Config
                         Sections.Add(curentSection);
                     }
 
-                    var sectionName = line.Substring(1, line.Length - 2);
+                    var sectionName = line[1..^1];
 
                     curentSection = new Section()
                     {
@@ -75,6 +75,9 @@ namespace condeco_cli.Config
                 Sections.Add(curentSection);
             }
         }
+
+        [GeneratedRegex("\r\n|\r|\n")]
+        public static partial Regex CarriageReturnRegex();
     }
 
     public class Section

@@ -1,6 +1,5 @@
-﻿using condeco_cli.Extensions;
-using HtmlAgilityPack;
-using libCondeco.Model.Queries;
+﻿using HtmlAgilityPack;
+using libCondeco.Extensions;
 using libCondeco.Model.Responses;
 using libCondeco.Model.Space;
 using Newtonsoft.Json.Linq;
@@ -14,8 +13,8 @@ namespace libCondeco
 {
     public class CondecoWeb
     {
-        HttpClientHandler clientHandler;
-        HttpClient client;
+        readonly HttpClientHandler clientHandler;
+        readonly HttpClient client;
         bool loginSuccessful = false;
 
         public string BaseUrl { get; }
@@ -378,7 +377,7 @@ namespace libCondeco
 
         public void LogOut()
         {
-            var logoutResult = client.GetStringAsync("/login/login.aspx?logout=1").Result;
+            _ = client.GetStringAsync("/login/login.aspx?logout=1").Result;
         }
     }
 }

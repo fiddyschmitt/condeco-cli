@@ -1,5 +1,4 @@
-﻿using libCondeco.Model.Responses;
-using libCondeco.Model.Space;
+﻿using libCondeco.Model.Space;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -8,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Queries
+namespace libCondeco.Model.Responses
 {
     public class GridResponse
     {

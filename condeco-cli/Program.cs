@@ -93,9 +93,9 @@ namespace condeco_cli
                                 Console.ForegroundColor = OriginalConsoleColour;
                                 Console.Write($"Booking {room.Name} for {date:dd/MM/yyyy}: ");
 
-                                var bookingResponse = condecoWeb.BookRoom(room, date);
+                                var (SuccessfullyBooked, BookingResponse) = condecoWeb.BookRoom(room, date);
 
-                                if (bookingResponse.Success)
+                                if (SuccessfullyBooked)
                                 {
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     Console.WriteLine($"Success");
@@ -103,7 +103,7 @@ namespace condeco_cli
                                 }
                                 else
                                 {
-                                    if (bookingResponse.BookingResponse.CallResponse.ResponseCode == "5014")
+                                    if (BookingResponse.CallResponse.ResponseCode == "5014")
                                     {
                                         Console.ForegroundColor = ConsoleColor.Yellow;
                                         Console.WriteLine($"You already have this desk booked.");
@@ -112,7 +112,7 @@ namespace condeco_cli
                                     else
                                     {
                                         Console.ForegroundColor = ConsoleColor.Yellow;
-                                        Console.WriteLine($"{bookingResponse.BookingResponse.CallResponse.ResponseCode}: {bookingResponse.BookingResponse.CallResponse.ResponseMessage}");
+                                        Console.WriteLine($"{BookingResponse.CallResponse.ResponseCode}: {BookingResponse.CallResponse.ResponseMessage}");
                                         Console.ForegroundColor = OriginalConsoleColour;
                                     }
                                 }
