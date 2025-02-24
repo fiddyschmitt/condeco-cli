@@ -13,5 +13,15 @@ namespace condeco_cli.Extensions
             var result = string.Join(separator, values);
             return result;
         }
+
+        public static string Pluralize(this string singular, int count)
+        {
+            if (count == 1)
+            {
+                return singular;
+            }
+
+            return $"{singular}s";
+        }
     }
 }
