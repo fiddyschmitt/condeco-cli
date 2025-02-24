@@ -1,7 +1,7 @@
 # condeco-cli
 Access Condeco via a command line interface.
 
-Thank you for leaving a Star!
+Please leave a star :)
 
 ## Download
 Portable executables for Windows, Linux and Mac can be found over in the [releases](https://github.com/fiddyschmitt/condeco-cli/releases/latest) section.
@@ -21,6 +21,11 @@ To book all the items in the config file:
 `condeco-cli.exe --autobook`
 
 ![autobook](https://github.com/user-attachments/assets/e8570996-caae-462c-9b39-21888d5b4326)
+
+## Scheduling
+To run a Linux cron job, follow [these](https://github.com/fiddyschmitt/condeco-cli/wiki/Scheduling-in-Linux) instructions.
+
+To run in a Windows Scheduled Task, follow [these](https://github.com/fiddyschmitt/condeco-cli/wiki/Scheduling-in-Windows) instructions.
 
 ## Thanks
 
