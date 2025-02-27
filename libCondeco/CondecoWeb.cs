@@ -161,13 +161,89 @@ namespace libCondeco
 
 
             var bookingResponse = client.PostAsync("/EnterpriseLite/api/Desk/Book", content).Result;
-            var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
 
-            var condecoBookingResponse = BookingResponse.FromServerResponse(bookingResponseStr);
+            if (bookingResponse.StatusCode == HttpStatusCode.InternalServerError)
+            {
+                //sometimes the Book API does not work. Try an alternative.
 
-            if (bookingResponse.StatusCode == HttpStatusCode.Created) return (true, condecoBookingResponse);
+                dateStr = date.ToString("%d/%M/yyyy");
 
-            return (false, condecoBookingResponse);
+                postStr = $$"""
+                {
+                    "bookingID": "0",
+                    "BookingSource": "1",
+                    "countryID": "{{room.CountryId}}",
+                    "CultureCode": "en-GB",
+                    "datesRequested": "{{dateStr}}_0;{{dateStr}}_1;",
+                    "generalForm": "fkUserID~¬firstName~¬lastName~¬company~¬emailAddress~¬telephone~¬isExternal~0¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬",
+                    "groupID": "{{room.GroupId}}",
+                    "IsNextDayBookingDeleted": false,
+                    "LanguageID": 1,
+                    "locationID": "{{room.LocationId}}",
+                    "resourceItemID": "{{room.RoomId}}",
+                    "TrackDate": "",
+                    "UserID": "{{userId}}",
+                    "UserLongID": "{{userIdLong}}",
+                    "wsTypeId": "2"
+                }
+                """;
+
+                content = new StringContent(postStr, Encoding.UTF8, "application/json");
+
+                bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
+                var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
+
+                bookingResponseStr = bookingResponseStr
+                                            .Replace("\"", "")
+                                            .Replace("\\\\n", "");
+
+                if (int.TryParse(bookingResponseStr, out var bookingId))
+                {
+                    var condecoBookingResponse = new BookingResponse()
+                    {
+                        CallResponse = new CallResponse()
+                        {
+                            ResponseCode = "Okay",
+                        },
+                        CreatedBookings = [
+                            new()
+                            {
+                                BookingID = bookingId,
+                            }
+                        ]
+                    };
+
+                    return (true, condecoBookingResponse);
+                }
+                else
+                {
+                    var condecoBookingResponse = new BookingResponse()
+                    {
+                        CallResponse = new CallResponse()
+                        {
+                            ResponseCode = "Custom",
+                            ResponseMessage = $"{bookingResponseStr}"
+                        }
+                    };
+
+                    return (false, condecoBookingResponse);
+                }
+            }
+            else
+            {
+                var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
+
+                var condecoBookingResponse = BookingResponse.FromServerResponse(bookingResponseStr);
+
+                if (bookingResponse.StatusCode == HttpStatusCode.Created) return (true, condecoBookingResponse);
+
+                if (string.IsNullOrEmpty(condecoBookingResponse.CallResponse.ResponseCode))
+                {
+                    condecoBookingResponse.CallResponse.ResponseCode = $"{(int)bookingResponse.StatusCode}";
+                    condecoBookingResponse.CallResponse.ResponseMessage = $"{bookingResponse.ReasonPhrase}";
+                }
+                return (false, condecoBookingResponse);
+            }
         }
 
         public GridResponse? GetGrid(string workstationTypeName)
