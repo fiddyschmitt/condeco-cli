@@ -9,6 +9,12 @@ namespace libCondeco.Extensions
 {
     public static class StringExtensions
     {
+        public static string ToString(this IEnumerable<string> values, string separator)
+        {
+            var result = string.Join(separator, values);
+            return result;
+        }
+
         public static string ReplaceInvalidChars(this string filename, string replacement)
         {
             return string.Join(replacement, filename.Split(Path.GetInvalidFileNameChars()));

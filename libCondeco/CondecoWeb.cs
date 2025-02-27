@@ -251,7 +251,11 @@ namespace libCondeco
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
             var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase))?.ResourceId
-                                    ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeName: {workstationTypeName}");
+                                    ?? throw new Exception(
+                                        $"Workspace Type not found: {workstationTypeName}{Environment.NewLine}{Environment.NewLine}" +
+                                        $"Valid Workspace Types:{Environment.NewLine}" +
+                                            $"{AppSettings?.WorkspaceTypes.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
+
 
             var result = GetGrid(resourceTypeId);
 
@@ -280,7 +284,7 @@ namespace libCondeco
 
             if (!postResponse.IsSuccessStatusCode)
             {
-                return null;
+                throw new Exception($"Server returned {(int)postResponse.StatusCode}: {postResponse.ReasonPhrase}");
             }
 
             var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
@@ -292,17 +296,40 @@ namespace libCondeco
 
         public RoomsResponse? GetRooms(GridResponse grid, string countryName, string locationName, string groupName, string floorName, string workstationTypeName)
         {
-            var country = grid.Countries.FirstOrDefault(cntry => cntry.Name.Equals(countryName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Country not found: {countryName}");
+            var country = grid.Countries.FirstOrDefault(cntry => cntry.Name.Equals(countryName, StringComparison.OrdinalIgnoreCase))
+                            ?? throw new Exception(
+                                $"Country not found: {countryName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid countries:{Environment.NewLine}" +
+                                    $"{grid.Countries.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
-            var location = country.Locations.FirstOrDefault(lcation => lcation.Name.Equals(locationName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Location not found: {locationName}");
+            var location = country.Locations.FirstOrDefault(lcation => lcation.Name.Equals(locationName, StringComparison.OrdinalIgnoreCase))
+                            ?? throw new Exception(
+                                $"Location not found: {locationName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid locations:{Environment.NewLine}" +
+                                    $"{country.Locations.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
-            var group = location.Groups.FirstOrDefault(grp => grp.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Group not found: {groupName}");
+            var group = location.Groups.FirstOrDefault(grp => grp.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase))
+                             ?? throw new Exception(
+                                $"Group not found: {groupName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid groups:{Environment.NewLine}" +
+                                    $"{location.Groups.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
-            var floor = group.Floors.FirstOrDefault(flr => flr.Name.Equals(floorName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Floor not found: {floorName}");
+            var floor = group.Floors.FirstOrDefault(flr => flr.Name.Equals(floorName, StringComparison.OrdinalIgnoreCase))
+                            ?? throw new Exception(
+                                $"Floor not found: {floorName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid floors:{Environment.NewLine}" +
+                                    $"{group.Floors.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
-            var workspaceType = floor.WorkspaceTypes.FirstOrDefault(wspType => wspType.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Workspace Type not found: {workstationTypeName}");
+            var workspaceType = floor.WorkspaceTypes.FirstOrDefault(wspType => wspType.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase))
+                             ?? throw new Exception(
+                                $"Workspace Type not found: {workstationTypeName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid Workspace Types:{Environment.NewLine}" +
+                                    $"{floor.WorkspaceTypes.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
-            var workspaceTypeDefinition = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Workspace Definition not found for: {workstationTypeName}");
+            var workspaceTypeDefinition = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Name.Equals(workstationTypeName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception(
+                                $"Workspace Definition not found: {workstationTypeName}{Environment.NewLine}{Environment.NewLine}" +
+                                $"Valid Workspace Types:{Environment.NewLine}" +
+                                    $"{AppSettings?.WorkspaceTypes.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
 
             var postStr = $$"""
                 {
@@ -325,7 +352,7 @@ namespace libCondeco
 
             if (!postResponse.IsSuccessStatusCode)
             {
-                return null;
+                throw new Exception($"Server returned {(int)postResponse.StatusCode}: {postResponse.ReasonPhrase}");
             }
 
             var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
@@ -369,7 +396,19 @@ namespace libCondeco
                 postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: {resourceId}}}", Encoding.UTF8, "application/json");
                 GetJson(client, $"/webapi/BookingGrid/GetGridSettings", postContent, Path.Combine(outputFolder, $"GetGridSettings - ResourceTypeId {resourceId}.json"));
 
-                var grid = GetGrid(resourceId);
+                GridResponse? grid = null;
+
+                try
+                {
+                    grid = GetGrid(resourceId);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Could not retrieve grid for ResourceId: {resourceId}");
+                    Console.WriteLine(ex.Message);
+                    continue;
+                }
+
                 if (grid == null)
                 {
                     Console.WriteLine($"Could not retrieve grid for ResourceId: {resourceId}");

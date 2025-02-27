@@ -3,13 +3,14 @@ using condeco_cli.CLI;
 using condeco_cli.Config;
 using condeco_cli.Extensions;
 using libCondeco;
+using libCondeco.Model.Responses;
 
 namespace condeco_cli
 {
     internal class Program
     {
         const string PROGRAM_NAME = "condeco-cli";
-        const string PROGRAM_VERSION = "1.1.0";
+        const string PROGRAM_VERSION = "1.2.0";
 
         static void Main(string[] args)
         {
@@ -83,7 +84,16 @@ namespace condeco_cli
                             Environment.Exit(1);
                         }
 
-                        var rooms = condecoWeb.GetRooms(grid, country, location, group, floor, workspaceTypeName);
+                        RoomsResponse? rooms = null;
+                        try
+                        {
+                            rooms = condecoWeb.GetRooms(grid, country, location, group, floor, workspaceTypeName);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(ex.Message);
+                            Environment.Exit(1);
+                        }
 
                         if (rooms == null)
                         {
@@ -95,7 +105,11 @@ namespace condeco_cli
 
                         if (room == null)
                         {
-                            Console.WriteLine($"Could not retrieve room: {desk}");
+                            Console.WriteLine($"Room not found: {desk}");
+                            Console.WriteLine();
+
+                            Console.WriteLine($"Valid room:");
+                            Console.WriteLine($"{rooms.Rooms.Select(item => $"\t{item.Name}").OrderBy(item => item).ToString(Environment.NewLine)}");
                             Environment.Exit(1);
                         }
 
