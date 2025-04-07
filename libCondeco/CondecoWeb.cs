@@ -362,6 +362,11 @@ namespace libCondeco
             return result;
         }
 
+        public void CheckIn()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+        }
+
         public void Dump(string? outputFolder = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");

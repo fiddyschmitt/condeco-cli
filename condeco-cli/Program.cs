@@ -25,8 +25,9 @@ namespace condeco_cli
             }
 
             Parser.Default
-                .ParseArguments<AutoBookOptions, DumpOptions>(args)
+                .ParseArguments<AutoBookOptions, CheckInOptions, DumpOptions>(args)
                 .WithParsed<AutoBookOptions>(RunAutoBook)
+                .WithParsed<CheckInOptions>(RunCheckIn)
                 .WithParsed<DumpOptions>(RunDump)
                 .WithNotParsed(errors => Console.WriteLine("Invalid command or arguments."));
         }
@@ -220,6 +221,28 @@ namespace condeco_cli
                 }
 
                 condecoWeb.LogOut();
+            }
+            else
+            {
+                Console.WriteLine($"Login unsuccessful.");
+                Console.WriteLine(ErrorMessage);
+                Console.WriteLine("Terminating.");
+                Environment.Exit(1);
+            }
+        }
+
+        static void RunCheckIn(CheckInOptions opts)
+        {
+            var config = LoadConfig(opts.Config);
+
+            var condecoWeb = new CondecoWeb(config["Account"]["BaseUrl"]);
+            var (LoggedIn, ErrorMessage) = condecoWeb.LogIn(
+                                                        config["Account"]["Username"],
+                                                        config["Account"]["Password"]);
+
+            if (LoggedIn)
+            {
+                condecoWeb.CheckIn();
             }
             else
             {
