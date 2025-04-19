@@ -8,9 +8,8 @@ using System.Threading.Tasks;
 namespace condeco_cli.CLI
 {
     [Verb("--checkin", HelpText = "Check in to the booked desks")]
-    class CheckInOptions
+    public class CheckInOptions : BaseOptions
     {
-        [Option("config", Required = false, HelpText = "Path to the config file.")]
-        public string Config { get; set; } = "";
+
     }
 }

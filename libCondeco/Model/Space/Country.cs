@@ -1,6 +1,8 @@
-﻿using System;
+﻿using libCondeco.Model.Responses;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,5 +14,8 @@ namespace libCondeco.Model.Space
         public string Name = "";
 
         public List<Location> Locations = [];
+
+        [IgnoreDataMember]
+        public GridResponse? Grid;
     }
 }

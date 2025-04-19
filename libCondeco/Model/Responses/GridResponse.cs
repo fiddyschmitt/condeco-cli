@@ -21,6 +21,10 @@ namespace libCondeco.Model.Responses
             var result = JsonConvert.DeserializeObject<GridResponse>(jsonStr)
                             ?? throw new Exception($"Could not deserialize string to {nameof(Settings)}:{Environment.NewLine}{jsonStr}");
 
+            result
+                .Countries
+                .ForEach(country => country.Grid = result);
+
             return result;
         }
     }

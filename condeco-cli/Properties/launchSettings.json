@@ -1,8 +1,7 @@
 {
   "profiles": {
     "condeco-cli": {
-      "commandName": "Project",
-      "commandLineArgs": "--autobook"
+      "commandName": "Project"
     }
   }
 }

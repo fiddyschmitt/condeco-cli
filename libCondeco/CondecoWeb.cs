@@ -246,6 +246,21 @@ namespace libCondeco
             }
         }
 
+        public List<Country> GetCountries()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var result = AppSettings?
+                            .WorkspaceTypes
+                            .Select(wt => wt.ResourceId)
+                            .Distinct()
+                            .Select(GetGrid)
+                            .SelectMany(grid => grid?.Countries ?? [])
+                            .ToList() ?? [];
+
+            return result;
+        }
+
         public GridResponse? GetGrid(string workstationTypeName)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
