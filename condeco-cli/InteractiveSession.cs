@@ -345,6 +345,7 @@ namespace condeco_cli
 
                 if (selectedAction == quit)
                 {
+                    condecoWeb.LogOut();
                     Environment.Exit(0);
                 }
             }
