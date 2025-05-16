@@ -2,10 +2,12 @@
 using libCondeco.Extensions;
 using libCondeco.Model.Responses;
 using libCondeco.Model.Space;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Net;
 using System.Text;
+using System.Web;
 using System.Xml;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -377,9 +379,59 @@ namespace libCondeco
             return result;
         }
 
-        public void CheckIn()
+        public GetUpComingBookingsResponse GetUpcomingBookings(DateOnly date)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var query = HttpUtility.ParseQueryString(string.Empty);
+            query["startDateTime"] = $"{date:yyyy-MM-dd} 09:00:00";
+            query["endDateTime"] = $"{date.AddDays(1):yyyy-MM-dd} 09:00:00";
+
+            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?{query}";
+            var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
+
+            var result = GetUpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
+            return result;
+        }
+
+        public bool CheckIn(UpComingBooking bookingDetails)
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            if (bookingDetails.BookingStatus == 0)
+            {
+                var booking = JsonConvert.DeserializeObject<JObject>(bookingDetails.RawJSON, new JsonSerializerSettings
+                {
+                    DateParseHandling = DateParseHandling.None
+                });
+
+                if (booking == null) return false;
+
+                booking["bookingStatus"] = 3;
+
+                var startDateTime = booking["startDateTime"]?.Value<string>();
+                var endDateTime = booking["endDateTime"]?.Value<string>();
+
+                if (!string.IsNullOrEmpty(startDateTime) && !string.IsNullOrEmpty(endDateTime))
+                {
+                    var query = HttpUtility.ParseQueryString(string.Empty);
+                    query["ClientId"] = userIdLong;
+
+                    var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
+                    var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
+                    {
+                        Content = new StringContent(booking.ToString(), Encoding.UTF8, "application/json")
+                    };
+
+                    var response = client.Send(putRequest);
+                    response.EnsureSuccessStatusCode();
+
+                    //var responseStr = response.Content.ReadAsStringAsync().Result;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void Dump(string? outputFolder = null)

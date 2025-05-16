@@ -286,7 +286,31 @@ namespace condeco_cli
             var condecoWeb = new CondecoWeb(config.Account.BaseUrl);
             NonInteractiveLogin(condecoWeb);
 
-            condecoWeb.CheckIn();
+            var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
+            var upcomingBookings = condecoWeb.GetUpcomingBookings(checkinDate);
+
+            upcomingBookings
+                .UpComingBookings
+                .ForEach(upcomingBooking =>
+                {
+                    Console.ForegroundColor = OriginalConsoleColour;
+                    Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}: ");
+
+                    var checkinSuccessful = condecoWeb.CheckIn(upcomingBooking);
+
+                    if (checkinSuccessful)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"Success");
+                        Console.ForegroundColor = OriginalConsoleColour;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"Unsuccessful");
+                        Console.ForegroundColor = OriginalConsoleColour;
+                    }
+                });
         }
 
         static void RunDump(DumpOptions opts)
