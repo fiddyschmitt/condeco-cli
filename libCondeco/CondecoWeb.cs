@@ -407,7 +407,6 @@ namespace libCondeco
 
                 if (booking == null) return false;
 
-                booking["bookingStatus"] = 3;
 
                 var startDateTime = booking["startDateTime"]?.Value<string>();
                 var endDateTime = booking["endDateTime"]?.Value<string>();
@@ -417,10 +416,51 @@ namespace libCondeco
                     var query = HttpUtility.ParseQueryString(string.Empty);
                     query["ClientId"] = userIdLong;
 
+
+                    var combined = booking.DeepClone();
+                    var bookingChild = booking.DeepClone();
+
+                    combined["availableTimeSlots"] = new JArray();
+                    combined["avalibility"] = null;
+
+                    combined["hasValidNoticeForExtend"] = true;
+                    combined["IsAllowedWithinCancelBeforeLimit"] = true;
+
+                    bookingChild["bookingStatus"] = 3;
+                    bookingChild["hasValidNoticeForExtend"] = true;
+                    bookingChild["IsAllowedWithinCancelBeforeLimit"] = true;
+                    bookingChild["fdCheckedIn"] = null;
+                    bookingChild["fdReleased"] = null;
+
+
+                    combined["booking"] = bookingChild;
+
+                    combined["bookingStatus"] = 1;
+                    combined["canExtentBooking"] = true;
+
+                    combined["endDateTimeUtc"] = combined["endDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
+
+                    combined["fetchingExtend"] = false;
+
+                    combined["originalBookingStatus"] = 0;
+                    combined["otherSameDayBookings"] = new JArray();
+
+                    combined["showBooking"] = true;
+                    combined["showBookingStart"] = false;
+                    combined["showBookingStartDisabled"] = false;
+                    combined["showDeleteActionDisabled"] = false;
+                    combined["showExtend"] = false;
+
+                    combined["startDateTimeUtc"] = combined["startDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
+
+
+                    var putRequestStr = combined.ToJson();
+                    putRequestStr = putRequestStr.Replace(@":00Z"",", @":00.000Z"",");
+
                     var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
                     var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
                     {
-                        Content = new StringContent(booking.ToString(), Encoding.UTF8, "application/json")
+                        Content = new StringContent(putRequestStr, Encoding.UTF8, "application/json")
                     };
 
                     var response = client.Send(putRequest);
