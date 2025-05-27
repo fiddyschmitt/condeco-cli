@@ -289,8 +289,40 @@ namespace condeco_cli
             var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
             var upcomingBookings = condecoWeb.GetUpcomingBookings(checkinDate);
 
+            //Permanent bookings seem to have a bookingId of zero. Straightforward to check in.
+            var checkinsToPerform = upcomingBookings
+                            .UpComingBookings
+                            .Where(booking => booking.bookingId == 0)
+                            .ToList();
+
+            //Some bookings are split into multiple sub-bookings. Each needs to be checked in separately, followed by the main booking.
             upcomingBookings
                 .UpComingBookings
+                .Where(booking => booking.bookingId != 0)
+                .GroupBy(booking => booking.bookingId)
+                .ToList()
+                .ForEach(group =>
+                {
+                    var subbookings = group
+                                        .OrderBy(subbooking => subbooking.bookingItemId)
+                                        .ToList();
+
+                    var mainBooking = subbookings[0];
+
+                    var otherSameDayBookings = subbookings
+                                                .Skip(1)
+                                                .ToList();
+
+                    mainBooking.otherSameDayBookings = otherSameDayBookings
+                                                        .Select(subbooking => subbooking.RawJSON)
+                                                        .ToList();
+
+                    checkinsToPerform.AddRange(otherSameDayBookings);
+                    checkinsToPerform.Add(mainBooking);
+                });
+
+
+            checkinsToPerform
                 .ForEach(upcomingBooking =>
                 {
                     Console.ForegroundColor = OriginalConsoleColour;

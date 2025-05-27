@@ -48,6 +48,11 @@ namespace libCondeco.Model.Responses
         public required string BookingTitle;
         public required int BookingStatus;
 
+        public ulong bookingId;
+        public ulong bookingItemId;
+
+        public List<string> otherSameDayBookings = [];
+
         public required string RawJSON;
     }
 }

@@ -416,6 +416,20 @@ namespace libCondeco
                     var query = HttpUtility.ParseQueryString(string.Empty);
                     query["ClientId"] = userIdLong;
 
+                    var otherSameDayBookings = new JArray(bookingDetails
+                                                            .otherSameDayBookings
+                                                            .Select(otherSameDayBookingsJsonStr =>
+                                                            {
+                                                                var subbooking = JToken.Parse(otherSameDayBookingsJsonStr);
+
+                                                                subbooking["bookingStatus"] = 3;
+                                                                subbooking["hasValidNoticeForExtend"] = true;
+                                                                subbooking["IsAllowedWithinCancelBeforeLimit"] = true;
+
+                                                                return subbooking;
+                                                            })
+                                                            .ToList());
+
 
                     var combined = booking.DeepClone();
                     var bookingChild = booking.DeepClone();
@@ -432,6 +446,14 @@ namespace libCondeco
                     bookingChild["fdCheckedIn"] = null;
                     bookingChild["fdReleased"] = null;
 
+                    if (otherSameDayBookings.Count > 0)
+                    {
+                        bookingChild["isAllDayBooking"] = true;
+                    }
+                    bookingChild["otherSameDayBookings"] = otherSameDayBookings;
+
+
+
 
                     combined["booking"] = bookingChild;
 
@@ -443,7 +465,12 @@ namespace libCondeco
                     combined["fetchingExtend"] = false;
 
                     combined["originalBookingStatus"] = 0;
-                    combined["otherSameDayBookings"] = new JArray();
+
+                    if (otherSameDayBookings.Count > 0)
+                    {
+                        combined["isAllDayBooking"] = true;
+                    }
+                    combined["otherSameDayBookings"] = otherSameDayBookings;
 
                     combined["showBooking"] = true;
                     combined["showBookingStart"] = false;
