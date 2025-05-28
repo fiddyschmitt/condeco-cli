@@ -391,6 +391,34 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
+            /*
+                From: main.24991d2acaee76da.js
+
+                Desk bookingStatus
+	                Reload = -3
+	                NoAction = -2
+	                Error = -1
+	                Booked = 0
+	                CheckedIn = 1
+	                CheckedOut = 2
+	                Transitioning = 3
+	                Cancelled = 4
+
+                Room bookingStatus
+	                Reload = -3
+	                NoAction = -2
+	                Error = -1
+	                Booked = 0
+	                Started = 1
+	                Ended = 2
+	                Transitioning = 3
+	                Cancelled = 4
+	                Extend = 5
+	                New = 6
+	                Pending = 7
+	                WaitList = 8
+            */
+
             if (bookingDetails.BookingStatus == 0)
             {
                 var booking = JsonConvert.DeserializeObject<JObject>(bookingDetails.RawJSON, new JsonSerializerSettings
@@ -487,11 +515,24 @@ namespace libCondeco
                     response.EnsureSuccessStatusCode();
 
                     //var responseStr = response.Content.ReadAsStringAsync().Result;
-                    return true;
+
+                    //The response is always 200, even if the booking was not changed.
+                    //Let's re-query the upcoming bookings to confirm the status has changed.
+
+                    var date = DateOnly.FromDateTime(DateTime.Parse(startDateTime));
+                    var upcomingBookings = GetUpcomingBookings(date);
+
+                    var bookingSuccessful = !upcomingBookings
+                                                .UpComingBookings
+                                                .Exists(upcomingBooking => upcomingBooking.bookingId == bookingDetails.bookingId &&
+                                                                           upcomingBooking.bookingItemId == bookingDetails.bookingItemId &&
+                                                                           upcomingBooking.BookingStatus == 0);
+
+                    return bookingSuccessful;
                 }
             }
 
-            return false;
+            return true;
         }
 
         public void Dump(string? outputFolder = null)
