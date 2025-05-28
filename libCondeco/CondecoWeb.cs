@@ -4,12 +4,9 @@ using libCondeco.Model.Responses;
 using libCondeco.Model.Space;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System;
 using System.Net;
 using System.Text;
 using System.Web;
-using System.Xml;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace libCondeco
 {
@@ -383,11 +380,7 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var query = HttpUtility.ParseQueryString(string.Empty);
-            query["startDateTime"] = $"{date:yyyy-MM-dd} 09:00:00";
-            query["endDateTime"] = $"{date.AddDays(1):yyyy-MM-dd} 09:00:00";
-
-            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?{query}";
+            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={date.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={date:yyyy-MM-dd} 13:59:59";
             var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
 
             var result = GetUpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
