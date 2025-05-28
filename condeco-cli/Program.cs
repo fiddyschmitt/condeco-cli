@@ -326,7 +326,13 @@ namespace condeco_cli
                 .ForEach(upcomingBooking =>
                 {
                     Console.ForegroundColor = OriginalConsoleColour;
-                    Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}: ");
+                    Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}");
+
+                    if (upcomingBooking.bookingId != 0)
+                    {
+                        Console.Write($" (booking {upcomingBooking.bookingId}, {upcomingBooking.bookingItemId})");
+                    }
+                    Console.Write($": ");
 
                     var checkinSuccessful = condecoWeb.CheckIn(upcomingBooking);
 
