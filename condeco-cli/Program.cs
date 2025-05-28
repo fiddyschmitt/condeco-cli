@@ -269,7 +269,6 @@ namespace condeco_cli
             }
 
             condecoWeb.LogOut();
-
         }
 
         static void RunCheckIn(CheckInOptions opts)
@@ -349,6 +348,8 @@ namespace condeco_cli
                         Console.ForegroundColor = OriginalConsoleColour;
                     }
                 });
+
+            condecoWeb.LogOut();
         }
 
         static void RunDump(DumpOptions opts)
