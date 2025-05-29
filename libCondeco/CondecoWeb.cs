@@ -419,120 +419,110 @@ namespace libCondeco
 	                WaitList = 8
             */
 
-            if (bookingDetails.BookingStatus == 0)
+            var booking = JsonConvert.DeserializeObject<JObject>(bookingDetails.RawJSON, new JsonSerializerSettings
             {
-                var booking = JsonConvert.DeserializeObject<JObject>(bookingDetails.RawJSON, new JsonSerializerSettings
+                DateParseHandling = DateParseHandling.None
+            });
+
+            if (booking == null) return false;
+
+
+            var startDateTime = booking["startDateTime"]?.Value<string>();
+            var endDateTime = booking["endDateTime"]?.Value<string>();
+
+            if (!string.IsNullOrEmpty(startDateTime) && !string.IsNullOrEmpty(endDateTime))
+            {
+                var query = HttpUtility.ParseQueryString(string.Empty);
+                query["ClientId"] = userIdLong;
+
+                var otherSameDayBookings = new JArray(bookingDetails
+                                                        .otherSameDayBookings
+                                                        .Select(otherSameDayBookingsJsonStr =>
+                                                        {
+                                                            var subbooking = JToken.Parse(otherSameDayBookingsJsonStr);
+
+                                                            subbooking["bookingStatus"] = 3;
+                                                            subbooking["hasValidNoticeForExtend"] = true;
+                                                            subbooking["IsAllowedWithinCancelBeforeLimit"] = true;
+
+                                                            return subbooking;
+                                                        })
+                                                        .ToList());
+
+
+                var combined = booking.DeepClone();
+                var bookingChild = booking.DeepClone();
+
+                combined["availableTimeSlots"] = new JArray();
+                combined["avalibility"] = null;
+
+                combined["hasValidNoticeForExtend"] = true;
+                combined["IsAllowedWithinCancelBeforeLimit"] = true;
+
+                bookingChild["bookingStatus"] = 3;
+                bookingChild["hasValidNoticeForExtend"] = true;
+                bookingChild["IsAllowedWithinCancelBeforeLimit"] = true;
+                bookingChild["fdCheckedIn"] = null;
+                bookingChild["fdReleased"] = null;
+
+                if (otherSameDayBookings.Count > 0)
                 {
-                    DateParseHandling = DateParseHandling.None
-                });
-
-                if (booking == null) return false;
-
-
-                var startDateTime = booking["startDateTime"]?.Value<string>();
-                var endDateTime = booking["endDateTime"]?.Value<string>();
-
-                if (!string.IsNullOrEmpty(startDateTime) && !string.IsNullOrEmpty(endDateTime))
-                {
-                    var query = HttpUtility.ParseQueryString(string.Empty);
-                    query["ClientId"] = userIdLong;
-
-                    var otherSameDayBookings = new JArray(bookingDetails
-                                                            .otherSameDayBookings
-                                                            .Select(otherSameDayBookingsJsonStr =>
-                                                            {
-                                                                var subbooking = JToken.Parse(otherSameDayBookingsJsonStr);
-
-                                                                subbooking["bookingStatus"] = 3;
-                                                                subbooking["hasValidNoticeForExtend"] = true;
-                                                                subbooking["IsAllowedWithinCancelBeforeLimit"] = true;
-
-                                                                return subbooking;
-                                                            })
-                                                            .ToList());
-
-
-                    var combined = booking.DeepClone();
-                    var bookingChild = booking.DeepClone();
-
-                    combined["availableTimeSlots"] = new JArray();
-                    combined["avalibility"] = null;
-
-                    combined["hasValidNoticeForExtend"] = true;
-                    combined["IsAllowedWithinCancelBeforeLimit"] = true;
-
-                    bookingChild["bookingStatus"] = 3;
-                    bookingChild["hasValidNoticeForExtend"] = true;
-                    bookingChild["IsAllowedWithinCancelBeforeLimit"] = true;
-                    bookingChild["fdCheckedIn"] = null;
-                    bookingChild["fdReleased"] = null;
-
-                    if (otherSameDayBookings.Count > 0)
-                    {
-                        bookingChild["isAllDayBooking"] = true;
-                    }
-                    bookingChild["otherSameDayBookings"] = otherSameDayBookings;
-
-
-
-
-                    combined["booking"] = bookingChild;
-
-                    combined["bookingStatus"] = 1;
-                    combined["canExtentBooking"] = true;
-
-                    combined["endDateTimeUtc"] = combined["endDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
-
-                    combined["fetchingExtend"] = false;
-
-                    combined["originalBookingStatus"] = 0;
-
-                    if (otherSameDayBookings.Count > 0)
-                    {
-                        combined["isAllDayBooking"] = true;
-                    }
-                    combined["otherSameDayBookings"] = otherSameDayBookings;
-
-                    combined["showBooking"] = true;
-                    combined["showBookingStart"] = false;
-                    combined["showBookingStartDisabled"] = false;
-                    combined["showDeleteActionDisabled"] = false;
-                    combined["showExtend"] = false;
-
-                    combined["startDateTimeUtc"] = combined["startDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
-
-
-                    var putRequestStr = combined.ToJson();
-                    putRequestStr = putRequestStr.Replace(@":00Z"",", @":00.000Z"",");
-
-                    var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
-                    var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
-                    {
-                        Content = new StringContent(putRequestStr, Encoding.UTF8, "application/json")
-                    };
-
-                    var response = client.Send(putRequest);
-                    response.EnsureSuccessStatusCode();
-
-                    //var responseStr = response.Content.ReadAsStringAsync().Result;
-
-                    //The response is always 200, even if the booking was not changed.
-                    //Let's re-query the upcoming bookings to confirm the status has changed.
-
-                    var date = DateOnly.FromDateTime(DateTime.Parse(startDateTime));
-                    var upcomingBookings = GetUpcomingBookings(date);
-
-                    var bookingSuccessful = !upcomingBookings
-                                                .UpComingBookings
-                                                .Exists(upcomingBooking => upcomingBooking.bookingId == bookingDetails.bookingId &&
-                                                                           upcomingBooking.bookingItemId == bookingDetails.bookingItemId &&
-                                                                           upcomingBooking.BookingStatus == 0);
-
-                    return bookingSuccessful;
+                    bookingChild["isAllDayBooking"] = true;
                 }
+                bookingChild["otherSameDayBookings"] = otherSameDayBookings;
+
+
+
+
+                combined["booking"] = bookingChild;
+
+                combined["bookingStatus"] = 1;
+                combined["canExtentBooking"] = true;
+
+                combined["endDateTimeUtc"] = combined["endDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
+
+                combined["fetchingExtend"] = false;
+
+                combined["originalBookingStatus"] = 0;
+
+                if (otherSameDayBookings.Count > 0)
+                {
+                    combined["isAllDayBooking"] = true;
+                }
+                combined["otherSameDayBookings"] = otherSameDayBookings;
+
+                combined["showBooking"] = true;
+                combined["showBookingStart"] = false;
+                combined["showBookingStartDisabled"] = false;
+                combined["showDeleteActionDisabled"] = false;
+                combined["showExtend"] = false;
+
+                combined["startDateTimeUtc"] = combined["startDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
+
+
+                var putRequestStr = combined.ToJson();
+                putRequestStr = putRequestStr.Replace(@":00Z"",", @":00.000Z"",");
+
+                var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
+                var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
+                {
+                    Content = new StringContent(putRequestStr, Encoding.UTF8, "application/json")
+                };
+
+                var response = client.Send(putRequest);
+                response.EnsureSuccessStatusCode();
+
+                var responseStr = response.Content.ReadAsStringAsync().Result;
+
+                var responseJson = JObject.Parse(responseStr);
+                var responseBookingStatus = (string?)responseJson["bookingStatus"] ?? "";
+
+                var bookingSuccessful = !responseBookingStatus.Equals("0");
+
+                return bookingSuccessful;
             }
 
-            return true;
+            return false;
         }
 
         public void Dump(string? outputFolder = null)
