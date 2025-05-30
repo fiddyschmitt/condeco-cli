@@ -8,12 +8,9 @@ Portable executables for Windows, Linux and Mac can be found over in the [releas
 
 ## Usage
 
-Run `condeco-cli.exe`, which automatically creates `config.ini`
+Run the program to add the desired bookings:
 
-Populate it with values from Condeco.
-
-![image](https://github.com/user-attachments/assets/4189778c-f509-48b1-8ddb-c818b147889b)
-
+![image](https://github.com/user-attachments/assets/60f0aac7-fc62-4894-93d5-e93cfef4081b)
 
 ## Usage
 To book all the items in the config file:
@@ -21,6 +18,10 @@ To book all the items in the config file:
 `condeco-cli.exe --autobook`
 
 ![autobook](https://github.com/user-attachments/assets/e8570996-caae-462c-9b39-21888d5b4326)
+
+To check in:
+
+`condeco-cli.exe --checkin`
 
 ## Scheduling
 To run a Linux cron job, follow [these](https://github.com/fiddyschmitt/condeco-cli/wiki/Scheduling-in-Linux) instructions.
