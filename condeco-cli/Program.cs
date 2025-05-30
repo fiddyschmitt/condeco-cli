@@ -320,34 +320,40 @@ namespace condeco_cli
                     checkinsToPerform.Add(mainBooking);
                 });
 
-
-            checkinsToPerform
-                .ForEach(upcomingBooking =>
-                {
-                    Console.ForegroundColor = OriginalConsoleColour;
-                    Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}");
-
-                    if (upcomingBooking.bookingId != 0)
+            if (checkinsToPerform.Count == 0)
+            {
+                Console.WriteLine($"There are no check-ins to perform at this time.");
+            }
+            else
+            {
+                checkinsToPerform
+                    .ForEach(upcomingBooking =>
                     {
-                        Console.Write($" (booking {upcomingBooking.bookingId}, {upcomingBooking.bookingItemId})");
-                    }
-                    Console.Write($": ");
-
-                    var checkinSuccessful = condecoWeb.CheckIn(upcomingBooking);
-
-                    if (checkinSuccessful)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"Success");
                         Console.ForegroundColor = OriginalConsoleColour;
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"Unsuccessful");
-                        Console.ForegroundColor = OriginalConsoleColour;
-                    }
-                });
+                        Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}");
+
+                        if (upcomingBooking.bookingId != 0)
+                        {
+                            Console.Write($" (booking {upcomingBooking.bookingId}, {upcomingBooking.bookingItemId})");
+                        }
+                        Console.Write($": ");
+
+                        var checkinSuccessful = condecoWeb.CheckIn(upcomingBooking);
+
+                        if (checkinSuccessful)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Success");
+                            Console.ForegroundColor = OriginalConsoleColour;
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"Unsuccessful");
+                            Console.ForegroundColor = OriginalConsoleColour;
+                        }
+                    });
+            }
 
             condecoWeb.LogOut();
         }
