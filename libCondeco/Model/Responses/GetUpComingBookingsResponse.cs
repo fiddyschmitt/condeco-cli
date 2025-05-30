@@ -27,7 +27,7 @@ namespace libCondeco.Model.Responses
                                     .Select(bookingObj =>
                                     {
                                         var bookingJSON = bookingObj.ToString();
-                                        var booking = JsonConvert.DeserializeObject<UpComingBooking>(bookingJSON) 
+                                        var booking = JsonConvert.DeserializeObject<UpComingBooking>(bookingJSON)
                                                         ?? throw new Exception($"Could not deserialize string to {nameof(UpComingBooking)}:{Environment.NewLine}{bookingJSON}");
 
                                         booking.RawJSON = bookingJSON;
@@ -48,11 +48,23 @@ namespace libCondeco.Model.Responses
         public required string BookingTitle;
         public required int BookingStatus;
 
-        public ulong bookingId;
-        public ulong bookingItemId;
+        public ulong BookingId;
+        public ulong BookingItemId;
 
-        public List<string> otherSameDayBookings = [];
+        public required BookingMetadata BookingMetadata;
+
+        public List<string> OtherSameDayBookings = [];
 
         public required string RawJSON;
+    }
+
+    public class BookingMetadata
+    {
+        public required Rules Rules;
+    }
+
+    public class Rules
+    {
+        public required bool HdCheckInRequired;
     }
 }

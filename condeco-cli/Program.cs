@@ -291,19 +291,21 @@ namespace condeco_cli
             //Permanent bookings seem to have a bookingId of zero. Straightforward to check in.
             var checkinsToPerform = upcomingBookings
                             .UpComingBookings
-                            .Where(booking => booking.bookingId == 0)
+                            .Where(booking => booking.BookingId == 0)
+                            .Where(booking => booking.BookingMetadata.Rules.HdCheckInRequired)
                             .ToList();
 
             //Some bookings are split into multiple sub-bookings. Each needs to be checked in separately, followed by the main booking.
             upcomingBookings
                 .UpComingBookings
-                .Where(booking => booking.bookingId != 0)
-                .GroupBy(booking => booking.bookingId)
+                .Where(booking => booking.BookingId != 0)
+                .Where(booking => booking.BookingMetadata.Rules.HdCheckInRequired)
+                .GroupBy(booking => booking.BookingId)
                 .ToList()
                 .ForEach(group =>
                 {
                     var subbookings = group
-                                        .OrderBy(subbooking => subbooking.bookingItemId)
+                                        .OrderBy(subbooking => subbooking.BookingItemId)
                                         .ToList();
 
                     var mainBooking = subbookings[0];
@@ -312,7 +314,7 @@ namespace condeco_cli
                                                 .Skip(1)
                                                 .ToList();
 
-                    mainBooking.otherSameDayBookings = otherSameDayBookings
+                    mainBooking.OtherSameDayBookings = otherSameDayBookings
                                                         .Select(subbooking => subbooking.RawJSON)
                                                         .ToList();
 
@@ -332,9 +334,9 @@ namespace condeco_cli
                         Console.ForegroundColor = OriginalConsoleColour;
                         Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}");
 
-                        if (upcomingBooking.bookingId != 0)
+                        if (upcomingBooking.BookingId != 0)
                         {
-                            Console.Write($" (booking {upcomingBooking.bookingId}, {upcomingBooking.bookingItemId})");
+                            Console.Write($" (booking {upcomingBooking.BookingId}, {upcomingBooking.BookingItemId})");
                         }
                         Console.Write($": ");
 

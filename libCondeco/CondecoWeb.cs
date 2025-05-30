@@ -391,6 +391,12 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
+            if (!bookingDetails.BookingMetadata.Rules.HdCheckInRequired)
+            {
+                Console.WriteLine($"Check-in is not required for bookingId {bookingDetails.BookingId}, bookingItemId {bookingDetails.BookingItemId}.");
+                return false;
+            }
+
             /*
                 From: main.24991d2acaee76da.js
 
@@ -436,7 +442,7 @@ namespace libCondeco
                 query["ClientId"] = userIdLong;
 
                 var otherSameDayBookings = new JArray(bookingDetails
-                                                        .otherSameDayBookings
+                                                        .OtherSameDayBookings
                                                         .Select(otherSameDayBookingsJsonStr =>
                                                         {
                                                             var subbooking = JToken.Parse(otherSameDayBookingsJsonStr);
