@@ -225,12 +225,23 @@ namespace condeco_cli
                 _ = datesToBook
                         .SelectParallelPreserveOrder(date =>
                         {
-                            var bookingResult = condecoWeb.BookRoom(room, date);
+                            (bool Success, BookingResponse BookingResponse)? bookingResult = null;
+                            Exception? exception = null;
+
+                            try
+                            {
+                                bookingResult = condecoWeb.BookRoom(room, date);
+                            }
+                            catch (Exception ex)
+                            {
+                                exception = ex;
+                            }
 
                             return new
                             {
                                 Date = date,
-                                BookingResult = bookingResult
+                                BookingResult = bookingResult,
+                                Exception = exception
                             };
                         }, Math.Min(16, datesToBook.Count))
                         .Select(res =>
@@ -238,26 +249,39 @@ namespace condeco_cli
                             Console.ForegroundColor = OriginalConsoleColour;
                             Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}: ");
 
-                            if (res.BookingResult.Success)
+                            if (res.Exception == null)
                             {
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"Success");
-                                Console.ForegroundColor = OriginalConsoleColour;
+                                if (res.BookingResult != null)
+                                {
+                                    if (res.BookingResult.Value.Success)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"Success");
+                                        Console.ForegroundColor = OriginalConsoleColour;
+                                    }
+                                    else
+                                    {
+                                        if (res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode == "5014")
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Yellow;
+                                            Console.WriteLine($"You already have this desk booked.");
+                                            Console.ForegroundColor = OriginalConsoleColour;
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Yellow;
+                                            Console.WriteLine($"{res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.Value.BookingResponse.CallResponse.ResponseMessage}");
+                                            Console.ForegroundColor = OriginalConsoleColour;
+                                        }
+                                    }
+                                }
                             }
                             else
                             {
-                                if (res.BookingResult.BookingResponse.CallResponse.ResponseCode == "5014")
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine($"You already have this desk booked.");
-                                    Console.ForegroundColor = OriginalConsoleColour;
-                                }
-                                else
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine($"{res.BookingResult.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.BookingResponse.CallResponse.ResponseMessage}");
-                                    Console.ForegroundColor = OriginalConsoleColour;
-                                }
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.Write($"Failed.");
+                                Console.ForegroundColor = OriginalConsoleColour;
+                                Console.WriteLine($" {res.Exception}");
                             }
 
                             return "";
