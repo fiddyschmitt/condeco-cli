@@ -387,14 +387,14 @@ namespace libCondeco
             return result;
         }
 
-        public bool CheckIn(UpComingBooking bookingDetails)
+        public (bool Success, string BookingStatus) CheckIn(UpComingBooking bookingDetails)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
             if (!bookingDetails.BookingMetadata.Rules.HdCheckInRequired)
             {
                 Console.WriteLine($"Check-in is not required for bookingId {bookingDetails.BookingId}, bookingItemId {bookingDetails.BookingItemId}.");
-                return false;
+                return (false, "Check-in not required");
             }
 
             /*
@@ -430,105 +430,34 @@ namespace libCondeco
                 DateParseHandling = DateParseHandling.None
             });
 
-            if (booking == null) return false;
+            if (booking == null) return (false, "Could not Deserialize JSON");
 
 
-            var startDateTime = booking["startDateTime"]?.Value<string>();
-            var endDateTime = booking["endDateTime"]?.Value<string>();
+            var query = HttpUtility.ParseQueryString(string.Empty);
+            query["ClientId"] = userIdLong;
 
-            if (!string.IsNullOrEmpty(startDateTime) && !string.IsNullOrEmpty(endDateTime))
+            booking["bookingStatus"] = 1;  //required
+
+            var putRequestStr = booking.ToJson();
+
+
+            var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
+            var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
             {
-                var query = HttpUtility.ParseQueryString(string.Empty);
-                query["ClientId"] = userIdLong;
+                Content = new StringContent(putRequestStr, Encoding.UTF8, "application/json")
+            };
 
-                var otherSameDayBookings = new JArray(bookingDetails
-                                                        .OtherSameDayBookings
-                                                        .Select(otherSameDayBookingsJsonStr =>
-                                                        {
-                                                            var subbooking = JToken.Parse(otherSameDayBookingsJsonStr);
+            var response = client.Send(putRequest);
+            response.EnsureSuccessStatusCode();
 
-                                                            subbooking["bookingStatus"] = 3;
-                                                            subbooking["hasValidNoticeForExtend"] = true;
-                                                            subbooking["IsAllowedWithinCancelBeforeLimit"] = true;
+            var responseStr = response.Content.ReadAsStringAsync().Result;
 
-                                                            return subbooking;
-                                                        })
-                                                        .ToList());
+            var responseJson = JObject.Parse(responseStr);
+            var responseBookingStatus = (string?)responseJson["bookingStatus"] ?? "";
 
+            var bookingSuccessful = !responseBookingStatus.Equals("0");
 
-                var combined = booking.DeepClone();
-                var bookingChild = booking.DeepClone();
-
-                combined["availableTimeSlots"] = new JArray();
-                combined["avalibility"] = null;
-
-                combined["hasValidNoticeForExtend"] = true;
-                combined["IsAllowedWithinCancelBeforeLimit"] = true;
-
-                bookingChild["bookingStatus"] = 3;
-                bookingChild["hasValidNoticeForExtend"] = true;
-                bookingChild["IsAllowedWithinCancelBeforeLimit"] = true;
-                bookingChild["fdCheckedIn"] = null;
-                bookingChild["fdReleased"] = null;
-
-                if (otherSameDayBookings.Count > 0)
-                {
-                    bookingChild["isAllDayBooking"] = true;
-                }
-                bookingChild["otherSameDayBookings"] = otherSameDayBookings;
-
-
-
-
-                combined["booking"] = bookingChild;
-
-                combined["bookingStatus"] = 1;
-                combined["canExtentBooking"] = true;
-
-                combined["endDateTimeUtc"] = combined["endDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
-
-                combined["fetchingExtend"] = false;
-
-                combined["originalBookingStatus"] = 0;
-
-                if (otherSameDayBookings.Count > 0)
-                {
-                    combined["isAllDayBooking"] = true;
-                }
-                combined["otherSameDayBookings"] = otherSameDayBookings;
-
-                combined["showBooking"] = true;
-                combined["showBookingStart"] = false;
-                combined["showBookingStartDisabled"] = false;
-                combined["showDeleteActionDisabled"] = false;
-                combined["showExtend"] = false;
-
-                combined["startDateTimeUtc"] = combined["startDateTime"];   //unsure if this is deliberate, but the PUT request has identical values.
-
-
-                var putRequestStr = combined.ToJson();
-                putRequestStr = putRequestStr.Replace(@":00Z"",", @":00.000Z"",");
-
-                var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
-                var putRequest = new HttpRequestMessage(HttpMethod.Put, changeBookingStateUrl)
-                {
-                    Content = new StringContent(putRequestStr, Encoding.UTF8, "application/json")
-                };
-
-                var response = client.Send(putRequest);
-                response.EnsureSuccessStatusCode();
-
-                var responseStr = response.Content.ReadAsStringAsync().Result;
-
-                var responseJson = JObject.Parse(responseStr);
-                var responseBookingStatus = (string?)responseJson["bookingStatus"] ?? "";
-
-                var bookingSuccessful = !responseBookingStatus.Equals("0");
-
-                return bookingSuccessful;
-            }
-
-            return false;
+            return (bookingSuccessful, responseBookingStatus);
         }
 
         public void Dump(string? outputFolder = null)

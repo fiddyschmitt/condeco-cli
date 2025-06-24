@@ -312,39 +312,11 @@ namespace condeco_cli
             var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
             var upcomingBookings = condecoWeb.GetUpcomingBookings(checkinDate);
 
-            //Permanent bookings seem to have a bookingId of zero. Straightforward to check in.
             var checkinsToPerform = upcomingBookings
                             .UpComingBookings
-                            .Where(booking => booking.BookingId == 0)
                             .Where(booking => booking.BookingMetadata.Rules.HdCheckInRequired)
                             .ToList();
 
-            //Some bookings are split into multiple sub-bookings. Each needs to be checked in separately, followed by the main booking.
-            upcomingBookings
-                .UpComingBookings
-                .Where(booking => booking.BookingId != 0)
-                .Where(booking => booking.BookingMetadata.Rules.HdCheckInRequired)
-                .GroupBy(booking => booking.BookingId)
-                .ToList()
-                .ForEach(group =>
-                {
-                    var subbookings = group
-                                        .OrderBy(subbooking => subbooking.BookingItemId)
-                                        .ToList();
-
-                    var mainBooking = subbookings[0];
-
-                    var otherSameDayBookings = subbookings
-                                                .Skip(1)
-                                                .ToList();
-
-                    mainBooking.OtherSameDayBookings = otherSameDayBookings
-                                                        .Select(subbooking => subbooking.RawJSON)
-                                                        .ToList();
-
-                    checkinsToPerform.AddRange(otherSameDayBookings);
-                    checkinsToPerform.Add(mainBooking);
-                });
 
             if (checkinsToPerform.Count == 0)
             {
@@ -364,7 +336,7 @@ namespace condeco_cli
                         }
                         Console.Write($": ");
 
-                        var checkinSuccessful = condecoWeb.CheckIn(upcomingBooking);
+                        (var checkinSuccessful, var bookingStatus) = condecoWeb.CheckIn(upcomingBooking);
 
                         if (checkinSuccessful)
                         {
@@ -375,7 +347,7 @@ namespace condeco_cli
                         else
                         {
                             Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"Unsuccessful");
+                            Console.WriteLine($"Unsuccessful ({bookingStatus})");
                             Console.ForegroundColor = OriginalConsoleColour;
                         }
                     });

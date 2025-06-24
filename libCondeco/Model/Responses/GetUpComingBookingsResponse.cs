@@ -53,8 +53,6 @@ namespace libCondeco.Model.Responses
 
         public required BookingMetadata BookingMetadata;
 
-        public List<string> OtherSameDayBookings = [];
-
         public required string RawJSON;
     }
 
