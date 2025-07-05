@@ -387,6 +387,24 @@ namespace libCondeco
             return result;
         }
 
+        public FindAColleagueSearchResponse FindAColleague(string searchText)
+        {
+            if (!loginSuccessful || userIdLong == null) throw new Exception($"Not yet logged in.");
+
+            var getUpcomingBookingsUrl = $"/webapi/TeamDay/FindAColleagueSearch";
+
+            var postContent = new FormUrlEncodedContent([
+                    new KeyValuePair<string, string>("name", searchText),
+                    new KeyValuePair<string, string>("accessToken", userIdLong)
+                    ]);
+
+            var findAColleagueSearchResponse = client.PostAsync(getUpcomingBookingsUrl, postContent).Result;
+            var findAColleagueSearchResponseJson = findAColleagueSearchResponse.Content.ReadAsStringAsync().Result;
+
+            var result = FindAColleagueSearchResponse.FromServerResponse(findAColleagueSearchResponseJson);
+            return result;
+        }
+
         public (bool Success, string BookingStatus) CheckIn(UpComingBooking bookingDetails)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
