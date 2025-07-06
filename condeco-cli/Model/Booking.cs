@@ -1,4 +1,5 @@
-﻿using System;
+﻿using libCondeco;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,5 +17,7 @@ namespace condeco_cli.Model
         public required string WorkspaceType;
         public required string Desk;
         public required List<string> Days = [];
+
+        public BookFor? BookFor = null;
     }
 }

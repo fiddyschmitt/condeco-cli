@@ -132,49 +132,31 @@ namespace libCondeco
             }
         }
 
+        //Book for current user
         public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date)
+        {
+            var currentUser = BookFor.CurrentUser();
+
+            var result = BookRoom(room, date, currentUser);
+            return result;
+        }
+
+        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor bookForUser)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var dateStr = date.ToString("dd/MM/yyyy");  //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
+            var bookForUserStr = bookForUser.ToGeneralFormString();
+
+            var dateStr = date.ToString("%d/%M/yyyy");  //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
 
             var postStr = $$"""
-                {
-                    "accessToken": "{{userIdLong}}",
-                    "datesInformation": [
-                        {
-                            "bookingType": "3",
-                            "startDate": "{{dateStr}}"
-                        }
-                    ],
-                    "deskID": {{room.RoomId}},
-                    "floorID": {{room.FloorId}},
-                    "groupID": {{room.GroupId}},
-                    "locationID": {{room.LocationId}},
-                    "pagingEnabled": false,
-                    "wsType": {{room.WSTypeId}}
-                }
-                """;
-
-            var content = new StringContent(postStr, Encoding.UTF8, "application/json");
-
-
-            var bookingResponse = client.PostAsync("/EnterpriseLite/api/Desk/Book", content).Result;
-
-            if (bookingResponse.StatusCode == HttpStatusCode.InternalServerError)
-            {
-                //sometimes the Book API does not work. Try an alternative.
-
-                dateStr = date.ToString("%d/%M/yyyy");
-
-                postStr = $$"""
                 {
                     "bookingID": "0",
                     "BookingSource": "1",
                     "countryID": "{{room.CountryId}}",
                     "CultureCode": "en-GB",
                     "datesRequested": "{{dateStr}}_0;{{dateStr}}_1;",
-                    "generalForm": "fkUserID~¬firstName~¬lastName~¬company~¬emailAddress~¬telephone~¬isExternal~0¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬",
+                    "generalForm": {{bookForUser}},
                     "groupID": "{{room.GroupId}}",
                     "IsNextDayBookingDeleted": false,
                     "LanguageID": 1,
@@ -187,60 +169,44 @@ namespace libCondeco
                 }
                 """;
 
-                content = new StringContent(postStr, Encoding.UTF8, "application/json");
+            var content = new StringContent(postStr, Encoding.UTF8, "application/json");
 
-                bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
-                var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
+            var bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
+            var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
 
-                bookingResponseStr = bookingResponseStr
-                                            .Replace("\"", "")
-                                            .Replace("\\\\n", "");
+            bookingResponseStr = bookingResponseStr
+                                        .Replace("\"", "")
+                                        .Replace("\\\\n", "");
 
-                if (int.TryParse(bookingResponseStr, out var bookingId))
+            if (int.TryParse(bookingResponseStr, out var bookingId))
+            {
+                var condecoBookingResponse = new BookingResponse()
                 {
-                    var condecoBookingResponse = new BookingResponse()
+                    CallResponse = new CallResponse()
                     {
-                        CallResponse = new CallResponse()
-                        {
-                            ResponseCode = "Okay",
-                        },
-                        CreatedBookings = [
-                            new()
+                        ResponseCode = "Okay",
+                    },
+                    CreatedBookings = [
+                        new()
                             {
                                 BookingID = bookingId,
                             }
-                        ]
-                    };
+                    ]
+                };
 
-                    return (true, condecoBookingResponse);
-                }
-                else
-                {
-                    var condecoBookingResponse = new BookingResponse()
-                    {
-                        CallResponse = new CallResponse()
-                        {
-                            ResponseCode = "Custom",
-                            ResponseMessage = $"{bookingResponseStr}"
-                        }
-                    };
-
-                    return (false, condecoBookingResponse);
-                }
+                return (true, condecoBookingResponse);
             }
             else
             {
-                var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
-
-                var condecoBookingResponse = BookingResponse.FromServerResponse(bookingResponseStr);
-
-                if (bookingResponse.StatusCode == HttpStatusCode.Created) return (true, condecoBookingResponse);
-
-                if (string.IsNullOrEmpty(condecoBookingResponse.CallResponse.ResponseCode))
+                var condecoBookingResponse = new BookingResponse()
                 {
-                    condecoBookingResponse.CallResponse.ResponseCode = $"{(int)bookingResponse.StatusCode}";
-                    condecoBookingResponse.CallResponse.ResponseMessage = $"{bookingResponse.ReasonPhrase}";
-                }
+                    CallResponse = new CallResponse()
+                    {
+                        ResponseCode = "Custom",
+                        ResponseMessage = $"{bookingResponseStr}"
+                    }
+                };
+
                 return (false, condecoBookingResponse);
             }
         }
@@ -387,14 +353,14 @@ namespace libCondeco
             return result;
         }
 
-        public FindAColleagueSearchResponse FindAColleague(string searchText)
+        public FindAColleagueSearchResponse FindAColleague(string searchTerm)
         {
             if (!loginSuccessful || userIdLong == null) throw new Exception($"Not yet logged in.");
 
             var getUpcomingBookingsUrl = $"/webapi/TeamDay/FindAColleagueSearch";
 
             var postContent = new FormUrlEncodedContent([
-                    new KeyValuePair<string, string>("name", searchText),
+                    new KeyValuePair<string, string>("name", searchTerm),
                     new KeyValuePair<string, string>("accessToken", userIdLong)
                     ]);
 
@@ -609,6 +575,35 @@ namespace libCondeco
         public void LogOut()
         {
             _ = client.GetStringAsync("/login/login.aspx?logout=1").Result;
+        }
+    }
+
+    public class BookFor
+    {
+        public required string UserId { get; set; }
+        public required string FirstName { get; set; }
+        public required string LastName { get; set; }
+        public required string EmailAddress { get; set; }
+        public required int IsExternal { get; set; }
+
+        public string ToGeneralFormString()
+        {
+            var result = $"fkUserID~{UserId}¬firstName~{FirstName}¬lastName~{LastName}¬company~¬emailAddress~{EmailAddress}¬telephone~¬isExternal~{IsExternal}¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬";
+            return result;
+        }
+
+        public static BookFor CurrentUser()
+        {
+            var result = new BookFor()
+            {
+                UserId = "",
+                FirstName = "",
+                LastName = "",
+                EmailAddress = "",
+                IsExternal = 0
+            };
+
+            return result;
         }
     }
 }

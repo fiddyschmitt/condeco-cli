@@ -44,5 +44,7 @@ namespace libCondeco.Model.Responses
 
         public string CheckInAMTime = "";
         public string CheckInPMTime = "";
+
+        public int BusinessUnitManager;
     }
 }

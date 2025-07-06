@@ -26,20 +26,20 @@ namespace libCondeco.Model.Responses
 
             return result;
         }
+    }
 
-        public class Colleague
-        {
-            public required string Department { get; set; }
-            public required string Email { get; set; }
-            public required string FullName { get; set; }
-            public required bool IsHideDeskAndWorkStatus { get; set; }
-            public required bool IsRoleAssigned { get; set; }
-            public required bool IsTeamMember { get; set; }
-            public required object RoleList { get; set; }
-            public required string Telephone { get; set; }
-            public required string TelephoneExt { get; set; }
-            public required int UserID { get; set; }
-        }
+    public class Colleague
+    {
+        public required string Department { get; set; }
+        public required string Email { get; set; }
+        public required string FullName { get; set; }
+        public required bool IsHideDeskAndWorkStatus { get; set; }
+        public required bool IsRoleAssigned { get; set; }
+        public required bool IsTeamMember { get; set; }
+        public required object RoleList { get; set; }
+        public required string Telephone { get; set; }
+        public required string TelephoneExt { get; set; }
+        public required int UserID { get; set; }
     }
 }
 

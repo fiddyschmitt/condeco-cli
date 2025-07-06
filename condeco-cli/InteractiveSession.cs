@@ -2,6 +2,7 @@
 using condeco_cli.Config;
 using condeco_cli.Model;
 using libCondeco;
+using libCondeco.Extensions;
 using libCondeco.Model.Space;
 using Spectre.Console;
 using System;
@@ -191,6 +192,19 @@ namespace condeco_cli
                                             .AddChoices(daysOfWeek))
                                     .ToList();
 
+            BookFor bookFor;
+
+            if (selectedCountry.Grid.Settings.DeskSettings.BusinessUnitManager == 1)
+            {
+                //This user can book for other users
+                bookFor = PromptForUserToBookFor(condecoWeb);
+            }
+            else
+            {
+                //This user can only book for themselves
+                bookFor = BookFor.CurrentUser();
+            }
+
             Booking result;
             if (edit == null)
             {
@@ -203,7 +217,8 @@ namespace condeco_cli
                     Floor = selectedFloor,
                     WorkspaceType = selectedWorkspaceType,
                     Desk = selectedRoom,
-                    Days = selectedDays
+                    Days = selectedDays,
+                    BookFor = bookFor,
                 };
             }
             else
@@ -215,11 +230,108 @@ namespace condeco_cli
                 edit.WorkspaceType = selectedWorkspaceType;
                 edit.Desk = selectedRoom;
                 edit.Days = selectedDays;
+                edit.BookFor = bookFor;
 
                 result = edit;
             }
 
             return result;
+        }
+
+        public static BookFor PromptForUserToBookFor(CondecoWeb condecoWeb)
+        {
+            var bookForCurrentUser = "Current user";
+            var bookForInternalUser = "Internal user";
+            var bookForExternalUser = "External user";
+
+            string[] actionChoices = [bookForCurrentUser, bookForInternalUser, bookForExternalUser];
+
+            AnsiConsole.MarkupLine("");
+
+            BookFor result;
+            while (true)
+            {
+                var selectedAction = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                            .Title("Book for: ")
+                                                            .AddChoices(actionChoices));
+
+                if (selectedAction == bookForCurrentUser)
+                {
+                    result = BookFor.CurrentUser();
+                    break;
+                }
+                else if (selectedAction == bookForInternalUser)
+                {
+                    while (true)
+                    {
+                        string searchTerm = "";
+                        Collect(ref searchTerm, $"Enter a search term: ");
+
+                        var searchResults = condecoWeb.FindAColleague(searchTerm);
+
+                        var tryAnotherSearchTermStr = "Try another search term";
+                        var cancelStr = "Cancel";
+
+                        if (searchResults.Colleagues.Length == 0)
+                        {
+                            var retrySelection = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                                .Title("No users found")
+                                                                .AddChoices([tryAnotherSearchTermStr, cancelStr]));
+
+                            if (retrySelection == cancelStr)
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            var colleagueDict = searchResults
+                                                    .Colleagues
+                                                    .ToDictionary(colleague => $"{colleague.FullName} ({colleague.Email})");
+
+                            var colleagueOptions = colleagueDict
+                                                    .Keys
+                                                    .ToList();
+
+                            colleagueOptions.Add(tryAnotherSearchTermStr);
+                            colleagueOptions.Add(cancelStr);
+
+                            var selectedColleagueOption = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                            .AddChoices(colleagueOptions));
+
+                            if (selectedColleagueOption == cancelStr)
+                            {
+                                break;
+                            }
+                            else if (selectedColleagueOption == tryAnotherSearchTermStr)
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                var selectedColleague = colleagueDict[selectedColleagueOption];
+                                var nameTokens = selectedColleague.FullName.Split(' ');
+                                result = new BookFor()
+                                {
+                                    UserId = $"{selectedColleague.UserID}",
+                                    FirstName = nameTokens[0],
+                                    LastName = nameTokens.Skip(1).ToString(" "),
+                                    EmailAddress = selectedColleague.Email,
+                                    IsExternal = 0
+                                };
+
+                                return result;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+
+                }
+            }
+
+            return result ?? throw new Exception($"User to Book For was not selected");
         }
 
         public void Run()
