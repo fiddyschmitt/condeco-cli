@@ -583,12 +583,13 @@ namespace libCondeco
         public required string UserId { get; set; }
         public required string FirstName { get; set; }
         public required string LastName { get; set; }
+        public string Company { get; set; } = "";
         public required string EmailAddress { get; set; }
         public required int IsExternal { get; set; }
 
         public string ToGeneralFormString()
         {
-            var result = $"fkUserID~{UserId}¬firstName~{FirstName}¬lastName~{LastName}¬company~¬emailAddress~{EmailAddress}¬telephone~¬isExternal~{IsExternal}¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬";
+            var result = $"fkUserID~{UserId}¬firstName~{FirstName}¬lastName~{LastName}¬company~{Company}¬emailAddress~{EmailAddress}¬telephone~¬isExternal~{IsExternal}¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬";
             return result;
         }
 

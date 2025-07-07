@@ -327,7 +327,47 @@ namespace condeco_cli
                 }
                 else
                 {
+                    while (true)
+                    {
+                        var firstName = "";
+                        Collect(ref firstName, $"First name: ");
 
+                        var lastName = "";
+                        Collect(ref lastName, $"Last name: ");
+
+                        var company = "";
+                        Collect(ref company, $"Company: ");
+
+                        var email = "";
+                        Collect(ref email, $"Email: ");
+
+
+                        var acceptStr = "Accept";
+                        var reEnterStr = "Re-enter";
+                        var cancelStr = "Cancel";
+
+                        var actionSelection = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                                .AddChoices([acceptStr, reEnterStr, cancelStr]));
+
+                        if (actionSelection == cancelStr)
+                        {
+                            break;
+                        }
+                        else if (actionSelection == acceptStr)
+                        {
+                            result = new BookFor()
+                            {
+                                UserId = $"0",
+                                FirstName = firstName,
+                                LastName = lastName,
+                                Company = company,
+                                EmailAddress = email,
+                                IsExternal = 1
+                            };
+
+                            return result;
+                        }
+                    }
                 }
             }
 
