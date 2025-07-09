@@ -311,13 +311,15 @@ namespace condeco_cli
                             {
                                 var selectedColleague = colleagueDict[selectedColleagueOption];
                                 var nameTokens = selectedColleague.FullName.Split(' ');
+
+                                //internal user
                                 result = new BookFor()
                                 {
                                     UserId = $"{selectedColleague.UserID}",
                                     FirstName = nameTokens[0],
                                     LastName = nameTokens.Skip(1).ToString(" "),
                                     EmailAddress = selectedColleague.Email,
-                                    IsExternal = 0
+                                    IsExternal = "0"
                                 };
 
                                 return result;
@@ -355,6 +357,7 @@ namespace condeco_cli
                         }
                         else if (actionSelection == acceptStr)
                         {
+                            //external user
                             result = new BookFor()
                             {
                                 UserId = $"0",
@@ -362,7 +365,7 @@ namespace condeco_cli
                                 LastName = lastName,
                                 Company = company,
                                 EmailAddress = email,
-                                IsExternal = 1
+                                IsExternal = "1"
                             };
 
                             return result;
@@ -515,6 +518,9 @@ namespace condeco_cli
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Floor}[/]" : booking.Floor).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.WorkspaceType}[/]" : booking.WorkspaceType).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Desk}[/]" : booking.Desk).ToArray())
+                                .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ?
+                                    $"[yellow]{(booking.BookFor == null ? "" : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
+                                    $"{(booking.BookFor == null ? "" : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
                                 .AddRow(bookings.Select(_ => "").ToArray());
 
             var daysOfWeek = Enum

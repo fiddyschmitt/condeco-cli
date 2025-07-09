@@ -230,7 +230,7 @@ namespace condeco_cli
 
                             try
                             {
-                                bookingResult = condecoWeb.BookRoom(room, date);
+                                bookingResult = condecoWeb.BookRoom(room, date, booking.BookFor);
                             }
                             catch (Exception ex)
                             {
@@ -247,7 +247,16 @@ namespace condeco_cli
                         .Select(res =>
                         {
                             Console.ForegroundColor = OriginalConsoleColour;
-                            Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}: ");
+
+                            if (booking.BookFor == null)
+                            {
+                                Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}: ");
+                            }
+                            else
+                            {
+                                Console.Write($"Booking {room.Name} for {booking.BookFor.FirstName} {booking.BookFor.LastName} on {res.Date:dd/MM/yyyy}: ");
+                            }
+
 
                             if (res.Exception == null)
                             {

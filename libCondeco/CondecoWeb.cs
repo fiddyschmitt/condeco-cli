@@ -141,10 +141,11 @@ namespace libCondeco
             return result;
         }
 
-        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor bookForUser)
+        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
+            bookForUser ??= BookFor.CurrentUser();
             var bookForUserStr = bookForUser.ToGeneralFormString();
 
             var dateStr = date.ToString("%d/%M/yyyy");  //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
@@ -156,7 +157,7 @@ namespace libCondeco
                     "countryID": "{{room.CountryId}}",
                     "CultureCode": "en-GB",
                     "datesRequested": "{{dateStr}}_0;{{dateStr}}_1;",
-                    "generalForm": {{bookForUser}},
+                    "generalForm": "{{bookForUserStr}}",
                     "groupID": "{{room.GroupId}}",
                     "IsNextDayBookingDeleted": false,
                     "LanguageID": 1,
@@ -585,7 +586,7 @@ namespace libCondeco
         public required string LastName { get; set; }
         public string Company { get; set; } = "";
         public required string EmailAddress { get; set; }
-        public required int IsExternal { get; set; }
+        public required string IsExternal { get; set; }
 
         public string ToGeneralFormString()
         {
@@ -601,7 +602,7 @@ namespace libCondeco
                 FirstName = "",
                 LastName = "",
                 EmailAddress = "",
-                IsExternal = 0
+                IsExternal = "0"
             };
 
             return result;

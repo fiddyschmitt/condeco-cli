@@ -1,4 +1,5 @@
 ﻿using condeco_cli.Model;
+using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.Space;
 using System;
@@ -56,6 +57,16 @@ namespace condeco_cli.Config
                     section["WorkspaceType"] = booking.WorkspaceType;
                     section["Desk"] = booking.Desk;
                     section["Days"] = booking.Days.ToString(",");
+
+                    if (booking.BookFor != null)
+                    {
+                        section["BookFor_UserID"] = booking.BookFor.UserId;
+                        section["BookFor_FirstName"] = booking.BookFor.FirstName;
+                        section["BookFor_LastName"] = booking.BookFor.LastName;
+                        section["BookFor_Company"] = booking.BookFor.Company;
+                        section["BookFor_Email"] = booking.BookFor.EmailAddress;
+                        section["BookFor_IsExternal"] = booking.BookFor.IsExternal;
+                    }
                 });
 
             var iniStr = ini.ToString();
@@ -81,16 +92,34 @@ namespace condeco_cli.Config
             Bookings = ini
                         .Sections
                         .Where(section => section.SectionName.Equals("Book"))
-                        .Select((section, index) => new Booking()
+                        .Select((section, index) =>
                         {
-                            AutogenName = $"Booking {index + 1}",
-                            Country = section["Country"],
-                            Location = section["Location"],
-                            Group = section["Group"],
-                            Floor = section["Floor"],
-                            WorkspaceType = section["WorkspaceType"],
-                            Desk = section["Desk"],
-                            Days = section["Days"].Split(",", StringSplitOptions.TrimEntries).ToList(),
+                            BookFor? bookFor = null;
+                            if (!string.IsNullOrEmpty(section["BookFor_IsExternal"]))
+                            {
+                                bookFor = new BookFor()
+                                {
+                                    UserId = section["BookFor_UserID"],
+                                    FirstName = section["BookFor_FirstName"],
+                                    LastName = section["BookFor_LastName"],
+                                    Company = section["BookFor_Company"],
+                                    EmailAddress = section["BookFor_Email"],
+                                    IsExternal = section["BookFor_IsExternal"]
+                                };
+                            }
+
+                            return new Booking()
+                            {
+                                AutogenName = $"Booking {index + 1}",
+                                Country = section["Country"],
+                                Location = section["Location"],
+                                Group = section["Group"],
+                                Floor = section["Floor"],
+                                WorkspaceType = section["WorkspaceType"],
+                                Desk = section["Desk"],
+                                Days = section["Days"].Split(",", StringSplitOptions.TrimEntries).ToList(),
+                                BookFor = bookFor
+                            };
                         })
                         .ToList();
         }
