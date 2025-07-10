@@ -164,6 +164,8 @@ namespace condeco_cli
                     Environment.Exit(1);
                 }
 
+                var startBookingFrom = DateTime.Now;
+
                 if (opts.WaitForRolloverMinutes != null && waitForRollover)
                 {
                     //Let's wait for the new booking window
@@ -196,6 +198,7 @@ namespace condeco_cli
                             Console.WriteLine($"It changed from [{originalStartDate} - {originalEndDate}] to [{grid.Settings.DeskSettings.StartDate} - {grid.Settings.DeskSettings.EndDate}]");
                             Console.WriteLine($"Will now proceed with booking.");
                             waitForRollover = false;
+                            startBookingFrom = originalEndDate.AddDays(1);
                             break;
                         }
 
@@ -208,7 +211,7 @@ namespace condeco_cli
                 var i = 0;
                 while (true)
                 {
-                    var date = DateOnly.FromDateTime(DateTime.Now.Date.AddDays(i));
+                    var date = DateOnly.FromDateTime(startBookingFrom.Date.AddDays(i));
                     if (date.ToDateTime(TimeOnly.MinValue) > grid.Settings.DeskSettings.EndDate)
                     {
                         break;
