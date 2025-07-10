@@ -17,6 +17,7 @@ namespace condeco_cli
         static void Main(string[] args)
         {
             Console.WriteLine($"{PROGRAM_NAME} {PROGRAM_VERSION}");
+            Console.WriteLine($"Current date: {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Console.WriteLine();
 
             if (args.Length == 0 || (args.Length == 2 && args[0] == "--config"))
