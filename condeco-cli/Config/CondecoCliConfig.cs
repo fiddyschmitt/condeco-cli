@@ -58,7 +58,7 @@ namespace condeco_cli.Config
                     section["Desk"] = booking.Desk;
                     section["Days"] = booking.Days.ToString(",");
 
-                    if (booking.BookFor != null)
+                    if (booking.BookFor != null && !string.IsNullOrEmpty(booking.BookFor.UserId))
                     {
                         section["BookFor_UserID"] = booking.BookFor.UserId;
                         section["BookFor_FirstName"] = booking.BookFor.FirstName;
@@ -95,7 +95,7 @@ namespace condeco_cli.Config
                         .Select((section, index) =>
                         {
                             BookFor? bookFor = null;
-                            if (!string.IsNullOrEmpty(section["BookFor_IsExternal"]))
+                            if (!string.IsNullOrEmpty(section["BookFor_UserID"]))
                             {
                                 bookFor = new BookFor()
                                 {
