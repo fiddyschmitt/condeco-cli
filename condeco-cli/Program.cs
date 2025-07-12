@@ -82,6 +82,8 @@ namespace condeco_cli
 
         }
 
+        private static readonly Random random = new();
+
         static void RunAutoBook(AutoBookOptions opts)
         {
             var waitForRollover = false;
@@ -231,21 +233,33 @@ namespace condeco_cli
                         {
                             (bool Success, BookingResponse BookingResponse)? bookingResult = null;
                             Exception? exception = null;
+                            var attempt = 1;
 
-                            try
+                            for (attempt = 1; attempt <= 5; attempt++)
                             {
-                                bookingResult = condecoWeb.BookRoom(room, date, booking.BookFor);
-                            }
-                            catch (Exception ex)
-                            {
-                                exception = ex;
+                                try
+                                {
+                                    bookingResult = condecoWeb.BookRoom(room, date, booking.BookFor);
+
+                                    exception = null;
+                                    break;
+                                }
+                                catch (Exception ex)
+                                {
+                                    exception = ex;
+
+                                    var toSleepSeconds = attempt * 10;
+                                    toSleepSeconds = toSleepSeconds + random.Next(0, toSleepSeconds);
+                                    Thread.Sleep(toSleepSeconds);
+                                }
                             }
 
                             return new
                             {
                                 Date = date,
                                 BookingResult = bookingResult,
-                                Exception = exception
+                                Exception = exception,
+                                Attempts = attempt
                             };
                         }, Math.Min(16, datesToBook.Count))
                         .Select(res =>
@@ -254,11 +268,20 @@ namespace condeco_cli
 
                             if (booking.BookFor == null)
                             {
-                                Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}: ");
+                                Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}");
                             }
                             else
                             {
-                                Console.Write($"Booking {room.Name} for {booking.BookFor.FirstName} {booking.BookFor.LastName} on {res.Date:dd/MM/yyyy}: ");
+                                Console.Write($"Booking {room.Name} for {booking.BookFor.FirstName} {booking.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
+                            }
+
+                            if (res.Attempts == 1)
+                            {
+                                Console.Write($": ");
+                            }
+                            else
+                            {
+                                Console.Write($" after {res.Attempts} attempts: ");
                             }
 
 
