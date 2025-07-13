@@ -116,6 +116,8 @@ namespace condeco_cli
             var condecoWeb = new CondecoWeb(config.Account.BaseUrl);
             NonInteractiveLogin(condecoWeb);
 
+            var startBookingFrom = DateTime.Now;
+
             foreach (var booking in config.Bookings)
             {
                 var daysToBook = booking
@@ -166,8 +168,6 @@ namespace condeco_cli
                     Console.WriteLine($"{string.Join(Environment.NewLine, rooms.Rooms.Select(item => $"\t{item.Name}").OrderBy(item => item))}");
                     Environment.Exit(1);
                 }
-
-                var startBookingFrom = DateTime.Now;
 
                 if (opts.WaitForRolloverMinutes != null && waitForRollover)
                 {
