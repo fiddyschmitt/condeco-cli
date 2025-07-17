@@ -240,7 +240,7 @@ namespace condeco_cli
 
         public static BookFor PromptForUserToBookFor(CondecoWeb condecoWeb)
         {
-            var bookForCurrentUser = "Current user";
+            var bookForCurrentUser = $"Current user ({condecoWeb.userFullName})";
             var bookForInternalUser = "Internal user";
             var bookForExternalUser = "External user";
 
@@ -426,7 +426,7 @@ namespace condeco_cli
             {
                 AnsiConsole.Clear();
 
-                PrintBookings(config.Bookings, null);
+                PrintBookings(config.Bookings, null, condecoWeb.userFullName);
 
                 var addBooking = "Add a new booking";
                 var editBooking = "Edit a booking";
@@ -472,7 +472,7 @@ namespace condeco_cli
                         var booking = bookingsLookup[selectedBooking];
 
                         AnsiConsole.Clear();
-                        PrintBookings(config.Bookings, booking.AutogenName);
+                        PrintBookings(config.Bookings, booking.AutogenName, condecoWeb.userFullName);
                         PromptForBookingDetails(condecoWeb, booking);
                         config.Save();
                     }
@@ -506,7 +506,7 @@ namespace condeco_cli
             }
         }
 
-        private static void PrintBookings(List<Booking> bookings, string? highlightBooking)
+        private static void PrintBookings(List<Booking> bookings, string? highlightBooking, string? currentUserFullName)
         {
             if (bookings.Count == 0) return;
 
@@ -519,8 +519,8 @@ namespace condeco_cli
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.WorkspaceType}[/]" : booking.WorkspaceType).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Desk}[/]" : booking.Desk).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ?
-                                    $"[yellow]{(booking.BookFor == null ? "" : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
-                                    $"{(booking.BookFor == null ? "" : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
+                                    $"[yellow]{(booking.BookFor == null ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
+                                    $"{(booking.BookFor == null ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
                                 .AddRow(bookings.Select(_ => "").ToArray());
 
             var daysOfWeek = Enum

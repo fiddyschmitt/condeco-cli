@@ -21,6 +21,7 @@ namespace libCondeco
         //Session-related info
         string? userId;
         string? userIdLong;
+        public string? userFullName;
         GetAppSettingResponse? AppSettings;     //app settings as provided by web server
 
         public CondecoWeb(string baseUrl)
@@ -79,6 +80,8 @@ namespace libCondeco
                 {
                     return (false, $"Could not extract UserId from HTML");
                 }
+
+                userFullName = loginResponseStr.Split("var userFullName = '", StringSplitOptions.None).Last().Split("';", StringSplitOptions.None).First();
 
                 //retrieve the userIdLong from the cookie
                 userIdLong = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["CONDECO"]?.Value.Split("=").Last();
