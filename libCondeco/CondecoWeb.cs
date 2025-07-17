@@ -457,8 +457,14 @@ namespace libCondeco
             var postContent = new StringContent($@"{{""userLongId"":""{userIdLong}""}}", Encoding.UTF8, "application/json");
             GetJson(client, $"/EnterpriseLite/api/User/GetGeoData", postContent, Path.Combine(outputFolder, "GetGeoData.json"));
 
+            var geoInfoFilename = Path.Combine(outputFolder, "ReturnGeoInformation.json");
             postContent = new StringContent($@"{{UserID: {userId}, LongUserId: ""{userIdLong}""}}", Encoding.UTF8, "application/json");
-            GetJson(client, $"/webapi/GridDateSelection/ReturnGeoInformation", postContent, Path.Combine(outputFolder, "ReturnGeoInformation.json"));
+            GetJson(client, $"/webapi/GridDateSelection/ReturnGeoInformation", postContent, geoInfoFilename);
+            var geoInfoJsonRaw = File.ReadAllText(geoInfoFilename);
+            var outerObj = JObject.Parse(geoInfoJsonRaw);
+            var geoInfoJson = (outerObj["d"]?.ToString()) ?? throw new Exception($"Could not deserialize string:{Environment.NewLine}{geoInfoJsonRaw}");
+            geoInfoJson = JToken.Parse(geoInfoJson).ToString();
+            File.WriteAllText(geoInfoFilename, geoInfoJson);
 
             //cookies
             var cookiesStr = clientHandler
