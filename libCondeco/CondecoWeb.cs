@@ -516,28 +516,33 @@ namespace libCondeco
                                     var resId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == workspaceType.Id)?.ResourceId;
                                     if (resId == null) continue;
 
-                                    var postStr = $$"""
+                                    var post = new
                                                     {
-                                                      "CountryId": {{country.Id}},
-                                                      "LocationId": {{location.Id}},
-                                                      "GroupId": {{group.Id}},
-                                                      "FloorId": {{floor.Id}},
-                                                      "WStypeId": {{workspaceType.Id}},
-                                                      "UserLongId": "{{userIdLong}}",
-                                                      "UserId": {{userId}},
-                                                      "ViewType": 2,
-                                                      "LanguageId": 1,
-                                                      "ResourceType": {{resId}},
-                                                      "StartDate": "{{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}}"
-                                                    }
-                                                    """;
+                                        CountryId = country.Id,
+                                        LocationId = location.Id,
+                                        GroupId = group.Id,
+                                        FloorId = floor.Id,
+                                        WStypeId = workspaceType.Id,
+                                        UserLongId = userIdLong,
+                                        UserId = userId,
+                                        ViewType = 2,
+                                        LanguageId = 1,
+                                        ResourceType = resId,
+                                        StartDate = "{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}"
+                                    };
+                                    var postStr = post.ToJson();
+
                                     postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
 
                                     var filename = $"GetFilteredGridSettings - ResourceTypeId {resourceId} - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
                                     filename = filename.ReplaceInvalidChars("-");
                                     Path.Combine(outputFolder, filename);
-
                                     GetJson(client, $"/webapi/BookingGrid/GetFilteredGridSettings", postContent, Path.Combine(outputFolder, filename));
+
+                                    filename = $"GetFilteredBookings - ResourceTypeId {resourceId} - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
+                                    filename = filename.ReplaceInvalidChars("-");
+                                    Path.Combine(outputFolder, filename);
+                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredBookings", postContent, Path.Combine(outputFolder, filename));
                                 }
             }
 
