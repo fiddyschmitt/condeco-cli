@@ -346,6 +346,75 @@ namespace libCondeco
             return result;
         }
 
+        public GetFilteredBookingsResponse GetBookings(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, DateTime startDate)
+        {
+            var post = new
+            {
+                CountryId = countryId,
+                LocationId = locationId,
+                GroupId = groupId,
+                FloorId = floorId,
+                WStypeId = workspaceTypeId,
+                UserLongId = userIdLong,
+                UserId = userId,
+                ViewType = 2,
+                LanguageId = 1,
+                ResourceType = resourceTypeId,
+                StartDate = $"{startDate:yyyy-MM-ddTHH:mm:ss}"
+            };
+            var postStr = post.ToJson();
+
+            var postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
+
+            var postResponse = client.PostAsync($"/webapi/BookingGrid/GetFilteredBookings", postContent).Result;
+            var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
+            var result = GetFilteredBookingsResponse.FromServerResponse(postResponseStr);
+            return result;
+        }
+
+        public bool BookingSuccessful(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, int roomId, DateOnly bookedForDate, BookFor bookingFor)
+        {
+            var bookings = GetBookings(countryId, locationId, groupId, floorId, workspaceTypeId, resourceTypeId, bookedForDate.ToDateTime(TimeOnly.MinValue));
+
+            var successful = bookings
+                                .Meetings
+                                .Where(booking =>
+                                {
+                                    var startDate = DateOnly.FromDateTime(booking.Start);
+                                    var endDateTime = DateOnly.FromDateTime(booking.End);
+
+                                    var matchesDate = bookedForDate > startDate && bookedForDate <= endDateTime;
+                                    return matchesDate;
+
+                                })
+                                .Where(booking => booking.RoomId == roomId)
+                                .Where(booking =>
+                                {
+                                    var matchesUser = true;
+
+                                    if (bookingFor.IsExternal == "1")
+                                    {
+                                        matchesUser &= booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+                                    }
+                                    else
+                                    {
+                                        if (bookingFor.UserId == "")
+                                        {
+                                            matchesUser &= "" + booking.AdditionalInfo.BookingOwnerUserID == userId;
+                                        }
+                                        else
+                                        {
+                                            matchesUser &= "" + booking.AdditionalInfo.BookingOwnerUserID == bookingFor.UserId;
+                                        }
+                                    }
+
+                                    return matchesUser;
+                                })
+                                .Any();
+
+            return successful;
+        }
+
         public GetUpComingBookingsResponse GetUpcomingBookings(DateOnly date)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
