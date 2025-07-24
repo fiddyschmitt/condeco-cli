@@ -182,13 +182,23 @@ namespace libCondeco
                                         .Replace("\"", "")
                                         .Replace("\\\\n", "");
 
-            if (int.TryParse(bookingResponseStr, out var bookingId))
+            //The booking response is not reliable. It sometimes says that the booking was successful, when it wasn't.
+            //Let's get positive confirmation.
+
+            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == room.WSTypeId)?.ResourceId
+                                    ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {room.WSTypeId}");
+
+            var successful = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, date, bookForUser);
+
+            if (successful)
             {
+                _ = int.TryParse(bookingResponseStr, out var bookingId);
+
                 var condecoBookingResponse = new BookingResponse()
                 {
                     CallResponse = new CallResponse()
                     {
-                        ResponseCode = "Okay",
+                        ResponseCode = "OK",
                     },
                     CreatedBookings = [
                         new()
@@ -206,7 +216,7 @@ namespace libCondeco
                 {
                     CallResponse = new CallResponse()
                     {
-                        ResponseCode = "Custom",
+                        ResponseCode = "Unsuccessful",
                         ResponseMessage = $"{bookingResponseStr}"
                     }
                 };

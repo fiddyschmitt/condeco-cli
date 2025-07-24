@@ -241,8 +241,11 @@ namespace condeco_cli
                                 {
                                     bookingResult = condecoWeb.BookRoom(room, date, booking.BookFor);
 
+                                    if (bookingResult.HasValue && bookingResult.Value.Success)
+                                    {
                                     exception = null;
                                     break;
+                                }
                                 }
                                 catch (Exception ex)
                                 {
@@ -297,21 +300,12 @@ namespace condeco_cli
                                     }
                                     else
                                     {
-                                        if (res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode == "5014")
-                                        {
-                                            Console.ForegroundColor = ConsoleColor.Yellow;
-                                            Console.WriteLine($"You already have this desk booked.");
-                                            Console.ForegroundColor = OriginalConsoleColour;
-                                        }
-                                        else
-                                        {
                                             Console.ForegroundColor = ConsoleColor.Yellow;
                                             Console.WriteLine($"{res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.Value.BookingResponse.CallResponse.ResponseMessage}");
                                             Console.ForegroundColor = OriginalConsoleColour;
                                         }
                                     }
                                 }
-                            }
                             else
                             {
                                 Console.ForegroundColor = ConsoleColor.Red;
