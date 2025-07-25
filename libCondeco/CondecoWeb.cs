@@ -440,6 +440,9 @@ namespace libCondeco
         {
             if (!loginSuccessful || userIdLong == null) throw new Exception($"Not yet logged in.");
 
+            //Could also use:
+            //https://acme.condecosoftware.com/MobileAPI/DeskBookingService.svc/FindColleague?accessToken={userIdLong}&name={searchTerm}
+
             var getUpcomingBookingsUrl = $"/webapi/TeamDay/FindAColleagueSearch";
 
             var postContent = new FormUrlEncodedContent([
