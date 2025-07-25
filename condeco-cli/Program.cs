@@ -262,7 +262,7 @@ namespace condeco_cli
                                 Date = date,
                                 BookingResult = bookingResult,
                                 Exception = exception,
-                                Attempts = attempt
+                                Attempts = attempt - 1
                             };
                         }, Math.Min(16, datesToBook.Count))
                         .Select(res =>
