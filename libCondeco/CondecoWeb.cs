@@ -530,6 +530,17 @@ namespace libCondeco
             return (bookingSuccessful, responseBookingStatus);
         }
 
+        public LoginInformationsV2Response GetLoginInformation()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var url = $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US";
+            var responseStr = client.GetStringAsync(url).Result;
+
+            var result = LoginInformationsV2Response.FromServerResponse(responseStr);
+            return result;
+        }
+
         public void Dump(string? outputFolder = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
