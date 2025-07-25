@@ -547,8 +547,8 @@ namespace condeco_cli
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.WorkspaceType}[/]" : booking.WorkspaceType).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Desk}[/]" : booking.Desk).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ?
-                                    $"[yellow]{(booking.BookFor == null ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
-                                    $"{(booking.BookFor == null ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
+                                    $"[yellow]{(booking.BookFor == null || string.IsNullOrEmpty(booking.BookFor.UserId) ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
+                                    $"{(booking.BookFor == null || string.IsNullOrEmpty(booking.BookFor.UserId) ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
                                 .AddRow(bookings.Select(_ => "").ToArray());
 
             var daysOfWeek = Enum
