@@ -67,21 +67,11 @@ namespace libCondeco
                 ]);
 
                 var loginResponse = client.PostAsync("/login/login.aspx", loginContent).Result;
-                var loginResponseStr = loginResponse.Content.ReadAsStringAsync().Result;
 
                 if (!loginResponse.IsSuccessStatusCode)
                 {
                     return (false, $"Could not log in: {loginResponse}");
                 }
-
-                //retrieve the UserId from the html
-                userId = loginResponseStr.Split("var int_userID = ", StringSplitOptions.None).Last().Split(";", StringSplitOptions.None).First();
-                if (userId == null)
-                {
-                    return (false, $"Could not extract UserId from HTML");
-                }
-
-                userFullName = loginResponseStr.Split("var userFullName = '", StringSplitOptions.None).Last().Split("';", StringSplitOptions.None).First();
 
                 //retrieve the userIdLong from the cookie
                 userIdLong = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["CONDECO"]?.Value.Split("=").Last();
@@ -89,6 +79,10 @@ namespace libCondeco
                 {
                     return (false, $"CONDECO cookie was not retrieved.");
                 }
+
+                var loginInfo = GetLoginInformation();
+                userId = $"{loginInfo.UserID}";
+                userFullName = $"{loginInfo.DeskResults.UserFirstName} {loginInfo.DeskResults.UserLastName}";
 
                 //get a token for logging into the Enterprise
                 var entLoginResponseStr = client.GetStringAsync("/EnterpriseLiteLogin.aspx").Result;
@@ -532,8 +526,6 @@ namespace libCondeco
 
         public LoginInformationsV2Response GetLoginInformation()
         {
-            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
-
             var url = $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US";
             var responseStr = client.GetStringAsync(url).Result;
 
