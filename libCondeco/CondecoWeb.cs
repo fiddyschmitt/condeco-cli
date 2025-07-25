@@ -537,6 +537,13 @@ namespace libCondeco
             outputFolder ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output", "dumps", $"dump {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Directory.CreateDirectory(outputFolder);
 
+            GetJson(client, $"/api/systeminfo", Path.Combine(outputFolder, "systeminfo.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/GetAllRoles?userlongId={userIdLong}&cultureCode=en-US", Path.Combine(outputFolder, "GetAllRoles.json"));
+            GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now:dd/MM/yyyy}&endDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1):dd/MM/yyyy}&deskEndDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&roomStartDate={DateTime.Now}&timeZoneID=Australia%2FBrisbane&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/team/GetMyTeams?userlongId={userIdLong}", Path.Combine(outputFolder, "GetMyTeams.json"));
+
             GetJson(client, $"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}", Path.Combine(outputFolder, "GetAppSetting.json"));
 
             var postContent = new StringContent($@"{{""userLongId"":""{userIdLong}""}}", Encoding.UTF8, "application/json");
@@ -590,9 +597,23 @@ namespace libCondeco
                 }
 
                 foreach (var country in grid.Countries)
+                {
                     foreach (var location in country.Locations)
+                    {
                         foreach (var group in location.Groups)
+                        {
+                            var groupSettingsWithRestrictionsFilename = $"groupSettingsWithRestrictions - {country.Name}, {location.Name}, {group.Name}.json";
+                            groupSettingsWithRestrictionsFilename = groupSettingsWithRestrictionsFilename.ReplaceInvalidChars("-");
+                            groupSettingsWithRestrictionsFilename = Path.Combine(outputFolder, groupSettingsWithRestrictionsFilename);
+                            GetJson(client, $"/MobileAPI/DeskBookingService.svc/groupSettingsWithRestrictions?accessToken={userIdLong}&bookingForUserId=-1&locationId={location.Id}&groupIds={group.Id}", groupSettingsWithRestrictionsFilename);
+
                             foreach (var floor in group.Floors)
+                            {
+                                var floorPlanFilename = $"Floorplan - {country.Name}, {location.Name}, {group.Name}, {floor.Name}.json";
+                                floorPlanFilename = floorPlanFilename.ReplaceInvalidChars("-");
+                                floorPlanFilename = Path.Combine(outputFolder, floorPlanFilename);
+                                GetJson(client, $"/MobileAPI/DeskBookingService.svc/floors/Floorplan?accessToken=dee9c1ec-0ddf-4184-8501-8b0271129b53&locationId={location.Id}&groupId={group.Id}&floorId={floor.Id}&IsV2=true", floorPlanFilename);
+
                                 foreach (var workspaceType in floor.WorkspaceTypes)
                                 {
                                     var resId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == workspaceType.Id)?.ResourceId;
@@ -618,13 +639,17 @@ namespace libCondeco
 
                                     var filename = $"GetFilteredGridSettings - ResourceTypeId {resourceId} - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
                                     filename = filename.ReplaceInvalidChars("-");
-                                    Path.Combine(outputFolder, filename);
-                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredGridSettings", postContent, Path.Combine(outputFolder, filename));
+                                    filename = Path.Combine(outputFolder, filename);
+                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredGridSettings", postContent, filename);
 
                                     filename = $"GetFilteredBookings - ResourceTypeId {resourceId} - {country.Name}, {location.Name}, {group.Name}, {floor.Name}, {workspaceType.Name}.json";
                                     filename = filename.ReplaceInvalidChars("-");
-                                    Path.Combine(outputFolder, filename);
-                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredBookings", postContent, Path.Combine(outputFolder, filename));
+                                    filename = Path.Combine(outputFolder, filename);
+                                    GetJson(client, $"/webapi/BookingGrid/GetFilteredBookings", postContent, filename);
+                                }
+                            }
+                        }
+                    }
                                 }
             }
 
