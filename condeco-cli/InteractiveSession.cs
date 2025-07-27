@@ -192,31 +192,18 @@ namespace condeco_cli
                                             .AddChoices(daysOfWeek))
                                     .ToList();
 
-            var bookingPermissions = condecoWeb.GetLoginInformation();
+            BookFor bookFor;
 
-            var groupSettings = bookingPermissions
-                                    .DeskResults
-                                    .MasterData
-                                    .SelectMany(md => md.LocationsV2)
-                                    .Where(location => location.Name == selectedLocation)
-                                    .SelectMany(location => location.WSTypes)
-                                    .Where(wsType => wsType.WSTypeName == selectedWorkspaceType)
-                                    .SelectMany(ws => ws.Groups)
-                                    .FirstOrDefault(grp => grp.Name == selectedGroup);
-
-            /*
-            var EnumAllowDesksToBeBookedForUsers = {
-                AllUsers: 1,
-                OnlyAdmins: 2,
-                OnlyAdminsAndLocSCEnabled: 3
-            };
-
-            //todo: Determine if canBookForOthers can be false, even though the site-wide setting (bookingPermissions.DeskResults.SystemSettings.CanBookForOthersGlobal) is 1.
-            */
-            var canBookForOthers = groupSettings?.DeskSettings.CanBookForOthers ?? false;
-            var canBookForExternalUser = groupSettings?.DeskSettings.CanBookForExternalUser ?? false;
-
-            var bookFor = PromptForUserToBookFor(condecoWeb, canBookForOthers, canBookForExternalUser);
+            if (selectedCountry.Grid.Settings.DeskSettings.BusinessUnitManager == 1)
+            {
+                //This user can book for other users
+                bookFor = PromptForUserToBookFor(condecoWeb);
+            }
+            else
+            {
+                //This user can only book for themselves
+                bookFor = BookFor.CurrentUser();
+            }
 
             Booking result;
             if (edit == null)
@@ -251,28 +238,13 @@ namespace condeco_cli
             return result;
         }
 
-        public static BookFor PromptForUserToBookFor(CondecoWeb condecoWeb, bool canBookForOthers, bool canBookForExternalUser)
+        public static BookFor PromptForUserToBookFor(CondecoWeb condecoWeb)
         {
-            if (!canBookForOthers && !canBookForExternalUser)
-            {
-                var bookFor = BookFor.CurrentUser();
-                return bookFor;
-            }
-
             var bookForCurrentUser = $"Current user ({condecoWeb.userFullName})";
             var bookForInternalUser = "Internal user";
             var bookForExternalUser = "External user";
 
-            List<string> actionChoices = [bookForCurrentUser];
-            if (canBookForOthers)
-            {
-                actionChoices.Add(bookForInternalUser);
-            }
-
-            if (canBookForExternalUser)
-            {
-                actionChoices.Add(bookForExternalUser);
-            }
+            string[] actionChoices = [bookForCurrentUser, bookForInternalUser, bookForExternalUser];
 
             AnsiConsole.MarkupLine("");
 
