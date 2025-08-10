@@ -1,4 +1,4 @@
-﻿using libCondeco.Model.Responses;
+﻿using libCondeco.Model.Web.Responses;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,8 +14,5 @@ namespace libCondeco.Model.Space
         public string Name = "";
 
         public List<Location> Locations = [];
-
-        [IgnoreDataMember]
-        public GridResponse? Grid;
     }
 }

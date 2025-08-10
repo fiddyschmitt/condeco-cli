@@ -1,6 +1,7 @@
 ﻿using condeco_cli.Model;
 using libCondeco;
 using libCondeco.Extensions;
+using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using System;
 using System.Collections.Generic;
@@ -22,9 +23,7 @@ namespace condeco_cli.Config
 
         public Account Account { get; private set; } = new()
         {
-            BaseUrl = "",
-            Username = "",
-            Password = ""
+            BaseUrl = ""
         };
 
         public List<Booking> Bookings { get; private set; } = [];
@@ -34,8 +33,18 @@ namespace condeco_cli.Config
             var ini = new Ini();
 
             ini["Account"]["BaseUrl"] = Account.BaseUrl;
-            ini["Account"]["Username"] = Account.Username;
-            ini["Account"]["Password"] = Account.Password;
+
+            if (!string.IsNullOrEmpty(Account.Username))
+            {
+                ini["Account"]["Username"] = Account.Username;
+                ini["Account"]["Password"] = Account.Password;
+            }
+            else if (!string.IsNullOrEmpty(Account.Token))
+            {
+                {
+                    ini["Account"]["Token"] = Account.Token;
+                }
+            }
 
             var bookingNumber = 1;
             Bookings
@@ -85,9 +94,18 @@ namespace condeco_cli.Config
             Account = new Account()
             {
                 BaseUrl = ini["Account"]["BaseUrl"],
-                Username = ini["Account"]["Username"],
-                Password = ini["Account"]["Password"],
+
             };
+
+            if (!string.IsNullOrEmpty(ini["Account"]["Username"]))
+            {
+                Account.Username = ini["Account"]["Username"];
+                Account.Password = ini["Account"]["Password"];
+            }
+            else if (!string.IsNullOrEmpty(ini["Account"]["Token"]))
+            {
+                Account.Token = ini["Account"]["Token"];
+            }
 
             Bookings = ini
                         .Sections

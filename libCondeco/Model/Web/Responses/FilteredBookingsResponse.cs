@@ -5,18 +5,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Responses
+namespace libCondeco.Model.Web.Responses
 {
-    public class GetFilteredBookingsResponse
+    public class FilteredBookingsResponse
     {
-        public Filter Filter { get; set; }
-        public Meeting[] Meetings { get; set; }
+        public required Filter Filter { get; set; }
+        public required Meeting[] Meetings { get; set; }
         public int ResponseCode { get; set; }
 
-        public static GetFilteredBookingsResponse FromServerResponse(string jsonStr)
+        public static FilteredBookingsResponse FromServerResponse(string jsonStr)
         {
-            var result = JsonConvert.DeserializeObject<GetFilteredBookingsResponse>(jsonStr)
-                            ?? throw new Exception($"Could not deserialize string to {nameof(GetFilteredBookingsResponse)}:{Environment.NewLine}{jsonStr}");
+            var result = JsonConvert.DeserializeObject<FilteredBookingsResponse>(jsonStr)
+                            ?? throw new Exception($"Could not deserialize string to {nameof(FilteredBookingsResponse)}:{Environment.NewLine}{jsonStr}");
 
             return result;
         }
@@ -30,50 +30,50 @@ namespace libCondeco.Model.Responses
         public int FloorId { get; set; }
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
-        public string UserLongId { get; set; }
+        public required string UserLongId { get; set; }
         public int UserId { get; set; }
         public int ViewType { get; set; }
         public int LanguageId { get; set; }
         public int ResourceType { get; set; }
         public int TimeFormat { get; set; }
         public bool ShowAMPM { get; set; }
-        public object JobID { get; set; }
+        public required object JobID { get; set; }
         public int WStypeId { get; set; }
     }
 
     public class Meeting
     {
         public int MeetingId { get; set; }
-        public object Title { get; set; }
+        public required object Title { get; set; }
         public DateTime Start { get; set; }
         public DateTime End { get; set; }
-        public Additionalinfo AdditionalInfo { get; set; }
+        public required Additionalinfo AdditionalInfo { get; set; }
         public int RoomId { get; set; }
-        public int[] UserIds { get; set; }
+        public required int[] UserIds { get; set; }
         public bool CanViewBooking { get; set; }
         public bool CanEditBooking { get; set; }
         public bool CanDeleteBooking { get; set; }
         public bool IsPast { get; set; }
         public bool onGridPopup { get; set; }
         public bool onGridDisplay { get; set; }
-        public object AdditionalInfoLimited { get; set; }
-        public string EncryptedMeetingID { get; set; }
-        public object EncryptedQuerstringReviewSummary { get; set; }
+        public required object AdditionalInfoLimited { get; set; }
+        public required string EncryptedMeetingID { get; set; }
+        public required object EncryptedQuerstringReviewSummary { get; set; }
         public bool UserWorkFromHome { get; set; }
         public bool QRCodeEnabled { get; set; }
     }
 
     public class Additionalinfo
     {
-        public string FullName { get; set; }
-        public string Extension { get; set; }
+        public required string FullName { get; set; }
+        public required string Extension { get; set; }
         public int BookedBy { get; set; }
         public int DeskType { get; set; }
-        public string BookingTypeColor { get; set; }
-        public string Company { get; set; }
-        public string EmailAddress { get; set; }
-        public string Telephone { get; set; }
-        public bool FlexiCheckInRequired { get; set; }
+        public required string BookingTypeColor { get; set; }
+        public required string Company { get; set; }
+        public required string EmailAddress { get; set; }
+        public required string Telephone { get; set; }
+        public required bool FlexiCheckInRequired { get; set; }
         public int BookingItemIDForCheckIn { get; set; }
         public bool CheckInAMRequired { get; set; }
         public bool CheckInPMRequired { get; set; }

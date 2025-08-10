@@ -1,8 +1,11 @@
 ﻿using HtmlAgilityPack;
 using libCondeco.Extensions;
-using libCondeco.Model.Responses;
+using libCondeco.Model.Bookings;
+using libCondeco.Model.Common;
+using libCondeco.Model.People;
 using libCondeco.Model.Space;
-using Newtonsoft.Json;
+using libCondeco.Model.Web;
+using libCondeco.Model.Web.Responses;
 using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Text;
@@ -10,7 +13,7 @@ using System.Web;
 
 namespace libCondeco
 {
-    public class CondecoWeb
+    public class CondecoWeb : ICondeco
     {
         readonly HttpClientHandler clientHandler;
         readonly HttpClient client;
@@ -21,8 +24,8 @@ namespace libCondeco
         //Session-related info
         string? userId;
         string? userIdLong;
-        public string? userFullName;
-        GetAppSettingResponse? AppSettings;     //app settings as provided by web server
+        string userFullName = string.Empty;
+        AppSettingResponse? AppSettings;     //app settings as provided by web server
 
         public CondecoWeb(string baseUrl)
         {
@@ -123,7 +126,7 @@ namespace libCondeco
 
                 //collect the App Settings
                 var appSettingsJson = client.GetStringAsync($"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}").Result;
-                AppSettings = GetAppSettingResponse.FromServerResponse(appSettingsJson);
+                AppSettings = AppSettingResponse.FromServerResponse(appSettingsJson);
 
 
                 loginSuccessful = true;
@@ -133,6 +136,16 @@ namespace libCondeco
             {
                 return (false, $"Exception during login: {ex}");
             }
+        }
+
+        public (bool Success, string ErrorMessage) LogIn(string token)
+        {
+            throw new NotSupportedException($"{nameof(CondecoWeb)} does not support logging in using a token. Instead, try using: --api mobile");
+        }
+
+        public string GetFullName()
+        {
+            return userFullName;
         }
 
         //Book for current user
@@ -192,20 +205,25 @@ namespace libCondeco
 
             if (successful)
             {
-                _ = int.TryParse(bookingResponseStr, out var bookingId);
+                try
+                {
+                    //Sometimes this contains "You have already reserved this workspace type for this time slot"
+                    var bookingResponseObj = bookingResponseStr.ToObject<BookingResponse>();
+                    return (true, bookingResponseObj);
+                }
+                catch
+                {
+
+                }
 
                 var condecoBookingResponse = new BookingResponse()
                 {
-                    CallResponse = new CallResponse()
+                    CallResponse = new Callresponse()
                     {
-                        ResponseCode = "OK",
+                        ResponseCode = 100,
+                        ResponseMessage = $"Booking confirmed"
                     },
-                    CreatedBookings = [
-                        new()
-                            {
-                                BookingID = bookingId,
-                            }
-                    ]
+                    CreatedBookings = []
                 };
 
                 return (true, condecoBookingResponse);
@@ -214,15 +232,59 @@ namespace libCondeco
             {
                 var condecoBookingResponse = new BookingResponse()
                 {
-                    CallResponse = new CallResponse()
+                    CallResponse = new Callresponse()
                     {
-                        ResponseCode = "Unsuccessful",
+                        ResponseCode = 0,
                         ResponseMessage = $"{bookingResponseStr}"
-                    }
+                    },
+                    CreatedBookings = []
                 };
 
                 return (false, condecoBookingResponse);
             }
+        }
+
+        public UpComingBookingsResponse GetUpcomingBookings(DateOnly date)
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={date.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={date:yyyy-MM-dd} 13:59:59";
+            var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
+
+            var result = UpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
+            return result;
+        }
+
+        public List<UpcomingBooking> GetUpcomingBookings()
+        {
+            var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
+            var upComingBookings = GetUpcomingBookings(checkinDate);
+
+            var result = upComingBookings
+                            .UpComingBookings
+                            .Select(booking => new UpcomingBookingWeb()
+                            {
+                                BookingId = booking.bookingId,
+                                BookingItemId = booking.bookingItemId,
+                                LocationId = booking.locationId,
+                                BookedLocation = booking.bookedLocation,
+                                DeskId = booking.bookedResourceItemId,
+                                BookingTitle = booking.bookedResourceName,
+                                BookingStartDate = booking.startDateTime,
+                                BookingEndDate = booking.endDateTime,
+                                BookingStatus = booking.bookingStatus,
+                                CheckInRequired = booking.bookingMetadata.rules.hdCheckInRequired,
+
+                                BookedForSelf = booking.bookedFor == null,
+                                BookedForUserId = booking.bookedFor?.userId,
+                                BookedForFullName = booking.bookedFor?.name,
+
+                                OriginalBookingObject = booking
+                            })
+                            .OfType<UpcomingBooking>()
+                            .ToList();
+
+            return result;
         }
 
         public List<Country> GetCountries()
@@ -236,6 +298,19 @@ namespace libCondeco
                             .Select(GetGrid)
                             .SelectMany(grid => grid?.Countries ?? [])
                             .ToList() ?? [];
+
+            return result;
+        }
+
+        public List<string> GetCountryNames()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var countries = GetCountries();
+
+            var result = countries
+                            .Select(country => country.Name)
+                            .ToList();
 
             return result;
         }
@@ -288,8 +363,10 @@ namespace libCondeco
             return result;
         }
 
-        public RoomsResponse? GetRooms(GridResponse grid, string countryName, string locationName, string groupName, string floorName, string workstationTypeName)
+        public RoomsResponse? GetRoomResponse(string countryName, string locationName, string groupName, string floorName, string workstationTypeName)
         {
+            var grid = GetGrid(workstationTypeName) ?? throw new Exception($"Could not retrieve grid for {nameof(workstationTypeName)}: {workstationTypeName}");
+
             var country = grid.Countries.FirstOrDefault(cntry => cntry.Name.Equals(countryName, StringComparison.OrdinalIgnoreCase))
                             ?? throw new Exception(
                                 $"Country not found: {countryName}{Environment.NewLine}{Environment.NewLine}" +
@@ -356,7 +433,14 @@ namespace libCondeco
             return result;
         }
 
-        public GetFilteredBookingsResponse GetBookings(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, DateTime startDate)
+        public List<Room> GetRooms(string countryName, string locationName, string groupName, string floorName, string workstationTypeName)
+        {
+            var roomResponse = GetRoomResponse(countryName, locationName, groupName, floorName, workstationTypeName);
+
+            return roomResponse?.Rooms ?? [];
+        }
+
+        public FilteredBookingsResponse GetBookings(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, DateTime startDate)
         {
             var post = new
             {
@@ -378,7 +462,7 @@ namespace libCondeco
 
             var postResponse = client.PostAsync($"/webapi/BookingGrid/GetFilteredBookings", postContent).Result;
             var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
-            var result = GetFilteredBookingsResponse.FromServerResponse(postResponseStr);
+            var result = FilteredBookingsResponse.FromServerResponse(postResponseStr);
             return result;
         }
 
@@ -425,17 +509,6 @@ namespace libCondeco
             return successful;
         }
 
-        public GetUpComingBookingsResponse GetUpcomingBookings(DateOnly date)
-        {
-            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
-
-            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={date.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={date:yyyy-MM-dd} 13:59:59";
-            var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
-
-            var result = GetUpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
-            return result;
-        }
-
         public FindAColleagueSearchResponse FindAColleague(string searchTerm)
         {
             if (!loginSuccessful || userIdLong == null) throw new Exception($"Not yet logged in.");
@@ -457,14 +530,37 @@ namespace libCondeco
             return result;
         }
 
-        public (bool Success, string BookingStatus) CheckIn(UpComingBooking bookingDetails)
+        public List<Model.People.Colleague> FindColleague(string searchTerm)
+        {
+            var response = FindAColleague(searchTerm);
+
+            var result = response
+                                .Colleagues
+                                .Select(static colleague => new Model.People.Colleague()
+                                {
+                                    UserId = $"{colleague.UserID}",
+                                    FullName = colleague.FullName,
+                                    Email = colleague.Email
+                                })
+                                .ToList();
+
+            return result;
+        }
+
+        public (bool Success, string BookingStatusStr) CheckIn(UpcomingBooking bookingDetails)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            if (!bookingDetails.BookingMetadata.Rules.HdCheckInRequired)
+            if (!bookingDetails.CheckInRequired)
             {
                 Console.WriteLine($"Check-in is not required for bookingId {bookingDetails.BookingId}, bookingItemId {bookingDetails.BookingItemId}.");
                 return (false, "Check-in not required");
+            }
+
+            if (bookingDetails is not UpcomingBookingWeb upcomingBooking)
+            {
+                Console.WriteLine($"{nameof(bookingDetails)} must be of type {nameof(UpcomingBookingWeb)} for this function to work.");
+                return (false, $"Booking object not supported by {nameof(CondecoWeb)}");
             }
 
             /*
@@ -495,20 +591,12 @@ namespace libCondeco
 	                WaitList = 8
             */
 
-            var booking = JsonConvert.DeserializeObject<JObject>(bookingDetails.RawJSON, new JsonSerializerSettings
-            {
-                DateParseHandling = DateParseHandling.None
-            });
-
-            if (booking == null) return (false, "Could not Deserialize JSON");
-
-
             var query = HttpUtility.ParseQueryString(string.Empty);
             query["ClientId"] = userIdLong;
 
-            booking["bookingStatus"] = 1;  //required
+            upcomingBooking.OriginalBookingObject.bookingStatus = 1;  //required
 
-            var putRequestStr = booking.ToJson();
+            var putRequestStr = upcomingBooking.OriginalBookingObject.ToJson();
 
 
             var changeBookingStateUrl = $"/EnterpriseLite/api/Booking/ChangeBookingState?{query}";
@@ -530,6 +618,22 @@ namespace libCondeco
             return (bookingSuccessful, responseBookingStatus);
         }
 
+        public bool CanBookForOthers(string locationName, string workspaceTypeName, string groupName)
+        {
+            var grid = GetGrid(workspaceTypeName) ?? throw new Exception($"Could not retrieve booking grid. Exiting.");
+
+            var result = grid.Settings.DeskSettings.BusinessUnitManager == 1;
+            return result;
+        }
+
+        public bool CanBookForOthersExternal(string locationName, string workspaceTypeName, string groupName)
+        {
+            var grid = GetGrid(workspaceTypeName) ?? throw new Exception($"Could not retrieve booking grid. Exiting.");
+
+            var result = grid.Settings.DeskSettings.BusinessUnitManager == 1;
+            return result;
+        }
+
         public void Dump(string? outputFolder = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
@@ -537,11 +641,13 @@ namespace libCondeco
             outputFolder ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output", "dumps", $"dump {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Directory.CreateDirectory(outputFolder);
 
+            var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
+
             GetJson(client, $"/api/systeminfo", Path.Combine(outputFolder, "systeminfo.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/GetAllRoles?userlongId={userIdLong}&cultureCode=en-US", Path.Combine(outputFolder, "GetAllRoles.json"));
             GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now:dd/MM/yyyy}&endDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
-            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1):dd/MM/yyyy}&deskEndDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&roomStartDate={DateTime.Now}&timeZoneID=Australia%2FBrisbane&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1):dd/MM/yyyy}&deskEndDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&roomStartDate={DateTime.Now}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/team/GetMyTeams?userlongId={userIdLong}", Path.Combine(outputFolder, "GetMyTeams.json"));
 
             GetJson(client, $"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}", Path.Combine(outputFolder, "GetAppSetting.json"));
@@ -612,7 +718,7 @@ namespace libCondeco
                                 var floorPlanFilename = $"Floorplan - {country.Name}, {location.Name}, {group.Name}, {floor.Name}.json";
                                 floorPlanFilename = floorPlanFilename.ReplaceInvalidChars("-");
                                 floorPlanFilename = Path.Combine(outputFolder, floorPlanFilename);
-                                GetJson(client, $"/MobileAPI/DeskBookingService.svc/floors/Floorplan?accessToken=dee9c1ec-0ddf-4184-8501-8b0271129b53&locationId={location.Id}&groupId={group.Id}&floorId={floor.Id}&IsV2=true", floorPlanFilename);
+                                GetJson(client, $"/MobileAPI/DeskBookingService.svc/floors/Floorplan?accessToken={userIdLong}&locationId={location.Id}&groupId={group.Id}&floorId={floor.Id}&IsV2=true", floorPlanFilename);
 
                                 foreach (var workspaceType in floor.WorkspaceTypes)
                                 {
@@ -620,7 +726,7 @@ namespace libCondeco
                                     if (resId == null) continue;
 
                                     var post = new
-                                                    {
+                                    {
                                         CountryId = country.Id,
                                         LocationId = location.Id,
                                         GroupId = group.Id,
@@ -650,7 +756,7 @@ namespace libCondeco
                             }
                         }
                     }
-                                }
+                }
             }
 
             Console.WriteLine($"Dump complete.");
@@ -694,39 +800,42 @@ namespace libCondeco
             File.WriteAllText(saveToFilename, str);
         }
 
+        public DateTime GetBookingWindowStartDate()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var result = AppSettings?
+                            .WorkspaceTypes
+                            .Select(wt => wt.ResourceId)
+                            .Distinct()
+                            .Select(GetGrid)
+                            .Select(grid => grid?.Settings.DeskSettings.StartDate ?? DateTime.Now.Date)
+                            .Where(date => date > DateTime.MinValue)
+                            .OrderBy(date => date)
+                            .FirstOrDefault() ?? DateTime.Now.Date;
+
+            return result;
+        }
+
+        public DateTime GetBookingWindowEndDate()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var result = AppSettings?
+                            .WorkspaceTypes
+                            .Select(wt => wt.ResourceId)
+                            .Distinct()
+                            .Select(GetGrid)
+                            .Select(grid => grid?.Settings.DeskSettings.EndDate ?? DateTime.Now.Date)
+                            .Where(date => date > DateTime.MinValue)
+                            .OrderByDescending(date => date)
+                            .FirstOrDefault() ?? DateTime.Now.Date;
+
+            return result;
+        }
         public void LogOut()
         {
             _ = client.GetStringAsync("/login/login.aspx?logout=1").Result;
-        }
-    }
-
-    public class BookFor
-    {
-        public required string UserId { get; set; }
-        public required string FirstName { get; set; }
-        public required string LastName { get; set; }
-        public string Company { get; set; } = "";
-        public required string EmailAddress { get; set; }
-        public required string IsExternal { get; set; }
-
-        public string ToGeneralFormString()
-        {
-            var result = $"fkUserID~{UserId}¬firstName~{FirstName}¬lastName~{LastName}¬company~{Company}¬emailAddress~{EmailAddress}¬telephone~¬isExternal~{IsExternal}¬notifyByPhone~0¬notifyByEmail~0¬notifyBySMS~¬";
-            return result;
-        }
-
-        public static BookFor CurrentUser()
-        {
-            var result = new BookFor()
-            {
-                UserId = "",
-                FirstName = "",
-                LastName = "",
-                EmailAddress = "",
-                IsExternal = "0"
-            };
-
-            return result;
         }
     }
 }

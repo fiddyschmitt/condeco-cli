@@ -43,5 +43,13 @@ namespace libCondeco.Extensions
             var result = JsonConvert.SerializeObject((T)obj, settings);
             return result;
         }
+
+        public static T ToObject<T>(this string jsonStr)
+        {
+            var result = JsonConvert.DeserializeObject<T>(jsonStr)
+                            ?? throw new Exception($"Could not deserialize string to {typeof(T).Name}:{Environment.NewLine}{jsonStr}");
+
+            return result;
+        }
     }
 }

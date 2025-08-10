@@ -6,12 +6,12 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Responses
+namespace libCondeco.Model.Common
 {
     public class BookingResponse
     {
-        public CallResponse CallResponse = new();
-        public List<CreatedBooking> CreatedBookings = [];
+        public required Callresponse CallResponse { get; set; }
+        public required Createdbooking[] CreatedBookings { get; set; }
 
         public static BookingResponse FromServerResponse(string jsonStr)
         {
@@ -22,17 +22,14 @@ namespace libCondeco.Model.Responses
         }
     }
 
-    public class CallResponse
+    public class Createdbooking
     {
-        public string ResponseCode = "";
-        public string ResponseMessage = "";
+        public required string BookingDate { get; set; }
+        public int BookingID { get; set; }
+        public int BookingType { get; set; }
+        public bool QRCodeEnabled { get; set; }
+        public int Status { get; set; }
+        public bool bookMultipleDesk { get; set; }
     }
 
-    public class CreatedBooking
-    {
-        public string BookingDate = "";
-        public int BookingID;
-        public int BookingType;
-        public int Status;
-    }
 }

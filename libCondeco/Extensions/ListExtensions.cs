@@ -18,6 +18,7 @@ namespace libCondeco.Extensions
             var resultDictionary = new ConcurrentDictionary<int, TOutput>();
 
             threads ??= Environment.ProcessorCount;
+            threads = Math.Max(threads.Value, 1);
 
             var outputItems = new BlockingCollection<int>(threads.Value);
 

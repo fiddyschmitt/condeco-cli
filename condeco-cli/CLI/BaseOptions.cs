@@ -11,5 +11,14 @@ namespace condeco_cli.CLI
     {
         [Option("config", Required = false, HelpText = "Path to the config file.")]
         public string Config { get; set; } = "";
+
+        [Option("api", Required = false, HelpText = "The API to use. Choose either 'web' or 'mobile'. Default is web.")]
+        public EnumAPI API { get; set; } = EnumAPI.web;
+    }
+
+    public enum EnumAPI
+    {
+        web,
+        mobile
     }
 }

@@ -3,6 +3,7 @@ using condeco_cli.Config;
 using condeco_cli.Model;
 using libCondeco;
 using libCondeco.Extensions;
+using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using Spectre.Console;
 using System;
@@ -17,10 +18,12 @@ namespace condeco_cli
 {
     public class InteractiveSession
     {
+        private readonly BaseOptions options;
         private readonly CondecoCliConfig config;
 
-        public InteractiveSession(CondecoCliConfig config)
+        public InteractiveSession(BaseOptions options, CondecoCliConfig config)
         {
+            this.options = options;
             this.config = config;
         }
 
@@ -30,14 +33,36 @@ namespace condeco_cli
             config.Save();
         }
 
-        void CollectUsername()
+        void CollectCreds()
         {
-            Collect(ref config.Account.Username, "Please enter username: ");
-            config.Save();
+            if (options.API == EnumAPI.web)
+            {
+                CollectUsernameAndPassword();
+            }
+            else
+            {
+                var usernameAndPasswordStr = "Username and password";
+                var tokenStr = "Token";
+
+                var loginType = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                        .Title("Log in using: ")
+                                                        .AddChoices([usernameAndPasswordStr, tokenStr]));
+
+                if (loginType == usernameAndPasswordStr)
+                {
+                    CollectUsernameAndPassword();
+                }
+                else if (loginType == tokenStr)
+                {
+                    Collect(ref config.Account.Token, "Please enter token: ");
+                    config.Save();
+                }
+            }
         }
 
-        void CollectPassword()
+        void CollectUsernameAndPassword()
         {
+            Collect(ref config.Account.Username, "Please enter username: ");
             Collect(ref config.Account.Password, "Please enter password: ");
             config.Save();
         }
@@ -54,7 +79,7 @@ namespace condeco_cli
             }
         }
 
-        static Booking PromptForBookingDetails(CondecoWeb condecoWeb, Booking? edit)
+        static Booking PromptForBookingDetails(ICondeco condeco, Booking? edit)
         {
             var promptIfRequired = new Func<List<string>, string, string>((Items, Prompt) =>
             {
@@ -74,7 +99,7 @@ namespace condeco_cli
             });
 
 
-            var countries = condecoWeb.GetCountries();
+            var countries = condeco.GetCountries();
             var countryNames = countries
                                 .Select(country => country.Name)
                                 .Distinct()
@@ -158,14 +183,12 @@ namespace condeco_cli
 
 
 
-            var rooms = condecoWeb.GetRooms(
-                                    selectedCountry.Grid ?? throw new Exception($"Grid not present for country: {selectedCountry.Name}"),
+            var rooms = condeco.GetRooms(
                                     selectedCountryName,
                                     selectedLocation,
                                     selectedGroup,
                                     selectedFloor,
-                                    selectedWorkspaceType)
-                                    ?.Rooms ?? throw new Exception($"No rooms found for: {breadcrumbs}");
+                                    selectedWorkspaceType);
 
 
             var roomNames = rooms
@@ -192,12 +215,14 @@ namespace condeco_cli
                                             .AddChoices(daysOfWeek))
                                     .ToList();
 
-            BookFor bookFor;
+            var canBookForOthers = condeco.CanBookForOthers(selectedLocation, selectedWorkspaceType, selectedGroup);
+            var canBookForExternalUser = condeco.CanBookForOthersExternal(selectedLocation, selectedWorkspaceType, selectedGroup);
 
-            if (selectedCountry.Grid.Settings.DeskSettings.BusinessUnitManager == 1)
+            BookFor bookFor;
+            if (canBookForOthers || canBookForExternalUser)
             {
                 //This user can book for other users
-                bookFor = PromptForUserToBookFor(condecoWeb);
+                bookFor = PromptForUserToBookFor(condeco, canBookForOthers, canBookForExternalUser);
             }
             else
             {
@@ -238,13 +263,28 @@ namespace condeco_cli
             return result;
         }
 
-        public static BookFor PromptForUserToBookFor(CondecoWeb condecoWeb)
+        public static BookFor PromptForUserToBookFor(ICondeco condeco, bool canBookForOthers, bool canBookForExternalUser)
         {
-            var bookForCurrentUser = $"Current user ({condecoWeb.userFullName})";
+            if (!canBookForOthers && !canBookForExternalUser)
+            {
+                var bookFor = BookFor.CurrentUser();
+                return bookFor;
+            }
+
+            var bookForCurrentUser = $"Current user ({condeco.GetFullName()})";
             var bookForInternalUser = "Internal user";
             var bookForExternalUser = "External user";
 
-            string[] actionChoices = [bookForCurrentUser, bookForInternalUser, bookForExternalUser];
+            List<string> actionChoices = [bookForCurrentUser];
+            if (canBookForOthers)
+            {
+                actionChoices.Add(bookForInternalUser);
+            }
+
+            if (canBookForExternalUser)
+            {
+                actionChoices.Add(bookForExternalUser);
+            }
 
             AnsiConsole.MarkupLine("");
 
@@ -267,12 +307,12 @@ namespace condeco_cli
                         string searchTerm = "";
                         Collect(ref searchTerm, $"Enter a search term: ");
 
-                        var searchResults = condecoWeb.FindAColleague(searchTerm);
+                        var colleagueSearchResults = condeco.FindColleague(searchTerm);
 
                         var tryAnotherSearchTermStr = "Try another search term";
                         var cancelStr = "Cancel";
 
-                        if (searchResults.Colleagues.Length == 0)
+                        if (colleagueSearchResults.Count == 0)
                         {
                             var retrySelection = AnsiConsole.Prompt(new SelectionPrompt<string>()
                                                                 .Title("No users found")
@@ -285,8 +325,7 @@ namespace condeco_cli
                         }
                         else
                         {
-                            var colleagueDict = searchResults
-                                                    .Colleagues
+                            var colleagueDict = colleagueSearchResults
                                                     .ToDictionary(colleague => $"{colleague.FullName} ({colleague.Email})");
 
                             var colleagueOptions = colleagueDict
@@ -315,7 +354,7 @@ namespace condeco_cli
                                 //internal user
                                 result = new BookFor()
                                 {
-                                    UserId = $"{selectedColleague.UserID}",
+                                    UserId = $"{selectedColleague.UserId}",
                                     FirstName = nameTokens[0],
                                     LastName = nameTokens.Skip(1).ToString(" "),
                                     EmailAddress = selectedColleague.Email,
@@ -380,14 +419,13 @@ namespace condeco_cli
         public void Run()
         {
             if (string.IsNullOrEmpty(config.Account.BaseUrl)) CollectBaseUrl();
-            if (string.IsNullOrEmpty(config.Account.Username)) CollectUsername();
-            if (string.IsNullOrEmpty(config.Account.Password)) CollectPassword();
+            if (string.IsNullOrEmpty(config.Account.Username) && string.IsNullOrEmpty(config.Account.Token)) CollectCreds();
 
-            CondecoWeb? condecoWeb = null;
+            ICondeco? condeco = null;
 
             while (true)
             {
-                condecoWeb = new CondecoWeb(config.Account.BaseUrl);
+                condeco = Program.BuildCondecoInterface(options, config);
 
                 var loggedIn = false;
 
@@ -397,9 +435,14 @@ namespace condeco_cli
                     .Spinner(Spinner.Known.Default)
                     .Start("[yellow]Logging in[/]", ctx =>
                     {
-                        (loggedIn, _) = condecoWeb.LogIn(
-                                                        config.Account.Username,
-                                                        config.Account.Password);
+                        if (!string.IsNullOrEmpty(config.Account.Username))
+                        {
+                            (loggedIn, _) = condeco.LogIn(config.Account.Username, config.Account.Password);
+                        }
+                        else if (!string.IsNullOrEmpty(config.Account.Token))
+                        {
+                            (loggedIn, _) = condeco.LogIn(config.Account.Token);
+                        }
                     });
 
                 if (loggedIn)
@@ -413,20 +456,19 @@ namespace condeco_cli
                     AnsiConsole.MarkupLine($"[red]Login unsuccessful.[/]\n");
 
                     CollectBaseUrl();
-                    CollectUsername();
-                    CollectPassword();
+                    CollectCreds();
 
                     AnsiConsole.Clear();
                 }
             }
 
-            if (condecoWeb == null) return;
+            if (condeco == null) return;
 
             while (true)
             {
                 AnsiConsole.Clear();
 
-                PrintBookings(config.Bookings, null, condecoWeb.userFullName);
+                PrintBookings(config.Bookings, null, condeco.GetFullName());
 
                 var addBooking = "Add a new booking";
                 var editBooking = "Edit a booking";
@@ -450,7 +492,7 @@ namespace condeco_cli
 
                 if (selectedAction == addBooking)
                 {
-                    var newBooking = PromptForBookingDetails(condecoWeb, null);
+                    var newBooking = PromptForBookingDetails(condeco, null);
                     config.Bookings.Add(newBooking);
                     config.Save();
                 }
@@ -472,8 +514,8 @@ namespace condeco_cli
                         var booking = bookingsLookup[selectedBooking];
 
                         AnsiConsole.Clear();
-                        PrintBookings(config.Bookings, booking.AutogenName, condecoWeb.userFullName);
-                        PromptForBookingDetails(condecoWeb, booking);
+                        PrintBookings(config.Bookings, booking.AutogenName, condeco.GetFullName());
+                        PromptForBookingDetails(condeco, booking);
                         config.Save();
                     }
                 }
@@ -500,7 +542,7 @@ namespace condeco_cli
 
                 if (selectedAction == quit)
                 {
-                    condecoWeb.LogOut();
+                    condeco.LogOut();
                     Environment.Exit(0);
                 }
             }

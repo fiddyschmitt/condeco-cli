@@ -9,7 +9,10 @@ namespace condeco_cli.Model
     public class Account
     {
         public required string BaseUrl;
-        public required string Username;
-        public required string Password;
+
+        public string Username = "";
+        public string Password = "";
+
+        public string Token = "";
     }
 }

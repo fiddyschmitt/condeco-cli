@@ -4,7 +4,8 @@ using condeco_cli.Config;
 using condeco_cli.Extensions;
 using libCondeco;
 using libCondeco.Extensions;
-using libCondeco.Model.Responses;
+using libCondeco.Model.Common;
+using libCondeco.Model.Space;
 using Spectre.Console;
 
 namespace condeco_cli
@@ -20,7 +21,9 @@ namespace condeco_cli
             Console.WriteLine($"Current date: {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Console.WriteLine();
 
-            if (args.Length == 0 || (args.Length == 2 && args[0] == "--config"))
+            if (args.Length == 0 ||
+                (args.Length == 2 && (args.ToList().Contains("--config") || args.ToList().Contains("--api"))) ||
+                (args.Length == 4 && (args.ToList().Contains("--config") && args.ToList().Contains("--api"))))
             {
                 Parser.Default.ParseArguments<BaseOptions>(args)
                 .WithParsed(static opts =>
@@ -39,7 +42,7 @@ namespace condeco_cli
                         Environment.Exit(0);
                     }
 
-                    var interactionSession = new InteractiveSession(config);
+                    var interactionSession = new InteractiveSession(opts, config);
                     interactionSession.Run();
                 });
 
@@ -55,7 +58,7 @@ namespace condeco_cli
             }
         }
 
-        static void NonInteractiveLogin(CondecoWeb condecoWeb)
+        static void NonInteractiveLogin(ICondeco condeco)
         {
             if (config == null)
             {
@@ -63,19 +66,28 @@ namespace condeco_cli
                 Environment.Exit(1);
             }
 
-            Console.WriteLine($"Logging into {condecoWeb.BaseUrl}");
-            var (LoggedIn, ErrorMessage) = condecoWeb.LogIn(
-                                                        config.Account.Username,
-                                                        config.Account.Password);
+            Console.WriteLine($"Logging into {condeco.BaseUrl}");
 
-            if (LoggedIn)
+            var loggedIn = false;
+            var errorMessage = "";
+
+            if (!string.IsNullOrEmpty(config.Account.Username))
+            {
+                (loggedIn, errorMessage) = condeco.LogIn(config.Account.Username, config.Account.Password);
+            }
+            else if (!string.IsNullOrEmpty(config.Account.Token))
+            {
+                (loggedIn, errorMessage) = condeco.LogIn(config.Account.Token);
+            }
+
+            if (loggedIn)
             {
                 Console.WriteLine($"Login successful.");
             }
             else
             {
                 Console.WriteLine($"Login unsuccessful.");
-                Console.WriteLine(ErrorMessage);
+                Console.WriteLine(errorMessage);
                 Console.WriteLine("Terminating.");
                 Environment.Exit(1);
             }
@@ -113,10 +125,52 @@ namespace condeco_cli
                 Environment.Exit(0);
             }
 
-            var condecoWeb = new CondecoWeb(config.Account.BaseUrl);
-            NonInteractiveLogin(condecoWeb);
+            var condeco = BuildCondecoInterface(opts, config);
+            NonInteractiveLogin(condeco);
 
-            var startBookingFrom = DateTime.Now;
+
+
+            var startBookingFrom = condeco.GetBookingWindowStartDate();
+            var bookUntil = condeco.GetBookingWindowEndDate();
+
+            if (opts.WaitForRolloverMinutes != null && waitForRollover)
+            {
+                //Let's wait for the new booking window
+                Console.WriteLine($"Will wait a total of {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} for the new booking window.");
+
+                var originalStartDate = condeco.GetBookingWindowStartDate();
+                var originalEndDate = condeco.GetBookingWindowEndDate();
+
+                var pollCount = 0;
+                var stopPollingAt = DateTime.Now.AddMinutes(opts.WaitForRolloverMinutes.Value);
+
+                while (true)
+                {
+                    if (DateTime.Now > stopPollingAt)
+                    {
+                        Console.WriteLine($"Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
+                        Environment.Exit(1);
+                    }
+
+                    Console.WriteLine($"Checking for rollover - attempt {++pollCount:N0}");
+
+                    var bookingWindowStartDate = condeco.GetBookingWindowStartDate();
+                    var bookingWindowEndDate = condeco.GetBookingWindowEndDate();
+
+                    if (originalEndDate != bookingWindowEndDate)
+                    {
+                        Console.WriteLine($"The new booking window is now available.");
+                        Console.WriteLine($"It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
+                        Console.WriteLine($"Will now proceed with booking.");
+
+                        startBookingFrom = originalEndDate.AddDays(1);
+                        bookUntil = bookingWindowEndDate;
+                        break;
+                    }
+
+                    Thread.Sleep(1000);
+                }
+            }
 
             foreach (var booking in config.Bookings)
             {
@@ -126,19 +180,10 @@ namespace condeco_cli
                                     .Where(day => day.HasValue)
                                     .ToList() ?? [];
 
-                var grid = condecoWeb.GetGrid(booking.WorkspaceType);
-
-                if (grid == null)
-                {
-                    Console.WriteLine($"Could not retrieve booking grid. Exiting.");
-                    Environment.Exit(1);
-                }
-
-                RoomsResponse? rooms = null;
+                List<Room> rooms = [];
                 try
                 {
-                    rooms = condecoWeb.GetRooms(
-                                        grid,
+                    rooms = condeco.GetRooms(
                                         booking.Country,
                                         booking.Location,
                                         booking.Group,
@@ -157,7 +202,7 @@ namespace condeco_cli
                     Environment.Exit(1);
                 }
 
-                var room = rooms.Rooms.FirstOrDefault(room => room.Name.Equals(booking.Desk));
+                var room = rooms.FirstOrDefault(room => room.Name.Equals(booking.Desk));
 
                 if (room == null)
                 {
@@ -165,48 +210,8 @@ namespace condeco_cli
                     Console.WriteLine();
 
                     Console.WriteLine($"Valid room:");
-                    Console.WriteLine($"{string.Join(Environment.NewLine, rooms.Rooms.Select(item => $"\t{item.Name}").OrderBy(item => item))}");
+                    Console.WriteLine($"{string.Join(Environment.NewLine, rooms.Select(item => $"\t{item.Name}").OrderBy(item => item))}");
                     Environment.Exit(1);
-                }
-
-                if (opts.WaitForRolloverMinutes != null && waitForRollover)
-                {
-                    //Let's wait for the new booking window
-                    Console.WriteLine($"Will wait a total of {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} for the new booking window.");
-
-                    var originalStartDate = grid.Settings.DeskSettings.StartDate;
-                    var originalEndDate = grid.Settings.DeskSettings.EndDate;
-                    var pollCount = 0;
-                    var stopPollingAt = DateTime.Now.AddMinutes(opts.WaitForRolloverMinutes.Value);
-                    while (true)
-                    {
-                        if (DateTime.Now > stopPollingAt)
-                        {
-                            Console.WriteLine($"Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
-                            Environment.Exit(1);
-                        }
-
-                        Console.WriteLine($"Checking for rollover - attempt {++pollCount:N0}");
-                        grid = condecoWeb.GetGrid(booking.WorkspaceType);
-
-                        if (grid == null)
-                        {
-                            Console.WriteLine($"Could not retrieve booking grid. Exiting.");
-                            Environment.Exit(1);
-                        }
-
-                        if (originalEndDate != grid.Settings.DeskSettings.EndDate)
-                        {
-                            Console.WriteLine($"The new booking window is now available.");
-                            Console.WriteLine($"It changed from [{originalStartDate} - {originalEndDate}] to [{grid.Settings.DeskSettings.StartDate} - {grid.Settings.DeskSettings.EndDate}]");
-                            Console.WriteLine($"Will now proceed with booking.");
-                            waitForRollover = false;
-                            startBookingFrom = originalEndDate.AddDays(1);
-                            break;
-                        }
-
-                        Thread.Sleep(1000);
-                    }
                 }
 
                 var datesToBook = new List<DateOnly>();
@@ -215,7 +220,7 @@ namespace condeco_cli
                 while (true)
                 {
                     var date = DateOnly.FromDateTime(startBookingFrom.Date.AddDays(i));
-                    if (date.ToDateTime(TimeOnly.MinValue) > grid.Settings.DeskSettings.EndDate)
+                    if (date.ToDateTime(TimeOnly.MinValue) > bookUntil)
                     {
                         break;
                     }
@@ -239,13 +244,13 @@ namespace condeco_cli
                             {
                                 try
                                 {
-                                    bookingResult = condecoWeb.BookRoom(room, date, booking.BookFor);
+                                    bookingResult = condeco.BookRoom(room, date, booking.BookFor);
 
                                     if (bookingResult.HasValue && bookingResult.Value.Success)
                                     {
-                                    exception = null;
-                                    break;
-                                }
+                                        exception = null;
+                                        break;
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
@@ -262,7 +267,7 @@ namespace condeco_cli
                                 Date = date,
                                 BookingResult = bookingResult,
                                 Exception = exception,
-                                Attempts = attempt - 1
+                                Attempts = attempt
                             };
                         }, Math.Min(16, datesToBook.Count))
                         .Select(res =>
@@ -300,12 +305,12 @@ namespace condeco_cli
                                     }
                                     else
                                     {
-                                            Console.ForegroundColor = ConsoleColor.Yellow;
-                                            Console.WriteLine($"{res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.Value.BookingResponse.CallResponse.ResponseMessage}");
-                                            Console.ForegroundColor = OriginalConsoleColour;
-                                        }
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"{res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.Value.BookingResponse.CallResponse.ResponseMessage}");
+                                        Console.ForegroundColor = OriginalConsoleColour;
                                     }
                                 }
+                            }
                             else
                             {
                                 Console.ForegroundColor = ConsoleColor.Red;
@@ -322,7 +327,7 @@ namespace condeco_cli
                 Console.WriteLine();
             }
 
-            condecoWeb.LogOut();
+            condeco.LogOut();
         }
 
         static void RunCheckIn(CheckInOptions opts)
@@ -336,16 +341,15 @@ namespace condeco_cli
                 Environment.Exit(0);
             }
 
-            var condecoWeb = new CondecoWeb(config.Account.BaseUrl);
-            NonInteractiveLogin(condecoWeb);
+            var condeco = BuildCondecoInterface(opts, config);
+            NonInteractiveLogin(condeco);
 
-            var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
-            var upcomingBookings = condecoWeb.GetUpcomingBookings(checkinDate);
+            var upcomingBookings = condeco.GetUpcomingBookings();
 
             var checkinsToPerform = upcomingBookings
-                            .UpComingBookings
-                            .Where(booking => booking.BookingMetadata.Rules.HdCheckInRequired)
-                            .ToList();
+                                    .Where(booking => booking.BookingStartDate.Date == DateTime.Now.Date)   //the mobile API can only check in for today
+                                    .Where(booking => booking.CheckInRequired)
+                                    .ToList();
 
 
             if (checkinsToPerform.Count == 0)
@@ -358,7 +362,12 @@ namespace condeco_cli
                     .ForEach(upcomingBooking =>
                     {
                         Console.ForegroundColor = OriginalConsoleColour;
-                        Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation} for {checkinDate:dd/MM/yyyy}");
+                        Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation}");
+
+                        if (!upcomingBooking.BookedForSelf && !string.IsNullOrEmpty(upcomingBooking.BookedForFullName))
+                        {
+                            Console.Write($" for {upcomingBooking.BookedForFullName}");
+                        }
 
                         if (upcomingBooking.BookingId != 0)
                         {
@@ -366,7 +375,7 @@ namespace condeco_cli
                         }
                         Console.Write($": ");
 
-                        (var checkinSuccessful, var bookingStatus) = condecoWeb.CheckIn(upcomingBooking);
+                        (var checkinSuccessful, var bookingStatusStr) = condeco.CheckIn(upcomingBooking);
 
                         if (checkinSuccessful)
                         {
@@ -377,13 +386,13 @@ namespace condeco_cli
                         else
                         {
                             Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"Unsuccessful ({bookingStatus})");
+                            Console.WriteLine($"Unsuccessful ({bookingStatusStr})");
                             Console.ForegroundColor = OriginalConsoleColour;
                         }
                     });
             }
 
-            condecoWeb.LogOut();
+            condeco.LogOut();
         }
 
         static void RunDump(DumpOptions opts)
@@ -431,13 +440,30 @@ namespace condeco_cli
 
         static void CheckAccountIsPopulated(CondecoCliConfig? config)
         {
-            if (config == null || string.IsNullOrEmpty(config.Account.Username))
+            if (config == null || (string.IsNullOrEmpty(config.Account.Username) && string.IsNullOrEmpty(config.Account.Token)))
             {
                 Console.WriteLine($"Please run condeco-cli without arguments to populate the config.");
                 Console.WriteLine("Exiting.");
 
                 Environment.Exit(1);
             }
+        }
+
+        public static ICondeco BuildCondecoInterface(BaseOptions options, CondecoCliConfig condecoCliConfig)
+        {
+            ICondeco? result = null;
+            if (options.API == EnumAPI.web)
+            {
+                result = new CondecoWeb(condecoCliConfig.Account.BaseUrl);
+            }
+
+            if (options.API == EnumAPI.mobile)
+            {
+                result = new CondecoMobile(condecoCliConfig.Account.BaseUrl);
+            }
+
+            if (result == null) throw new Exception($"API not supported: {options.API}");
+            return result;
         }
 
         public static readonly ConsoleColor OriginalConsoleColour = Console.ForegroundColor;

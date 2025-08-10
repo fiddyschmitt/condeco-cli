@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Responses
+namespace libCondeco.Model.Web.Responses
 {
     public class GridResponse
     {
@@ -20,10 +20,6 @@ namespace libCondeco.Model.Responses
 
             var result = JsonConvert.DeserializeObject<GridResponse>(jsonStr)
                             ?? throw new Exception($"Could not deserialize string to {nameof(Settings)}:{Environment.NewLine}{jsonStr}");
-
-            result
-                .Countries
-                .ForEach(country => country.Grid = result);
 
             return result;
         }

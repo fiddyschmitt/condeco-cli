@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Responses
+namespace libCondeco.Model.Web.Responses
 {
     public class RoomsResponse
     {

@@ -6,16 +6,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace libCondeco.Model.Responses
+namespace libCondeco.Model.Web.Responses
 {
-    public class GetAppSettingResponse
+    public class AppSettingResponse
     {
         public List<WorkspaceTypeDefinition> WorkspaceTypes = [];
 
-        public static GetAppSettingResponse FromServerResponse(string jsonStr)
+        public static AppSettingResponse FromServerResponse(string jsonStr)
         {
-            var result = JsonConvert.DeserializeObject<GetAppSettingResponse>(jsonStr)
-                            ?? throw new Exception($"Could not deserialize string to {nameof(GetAppSettingResponse)}:{Environment.NewLine}{jsonStr}");
+            var result = JsonConvert.DeserializeObject<AppSettingResponse>(jsonStr)
+                            ?? throw new Exception($"Could not deserialize string to {nameof(AppSettingResponse)}:{Environment.NewLine}{jsonStr}");
 
             return result;
         }
