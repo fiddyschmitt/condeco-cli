@@ -13,7 +13,7 @@ namespace condeco_cli
     internal class Program
     {
         const string PROGRAM_NAME = "condeco-cli";
-        const string PROGRAM_VERSION = "1.5.0";
+        const string PROGRAM_VERSION = "1.6.0";
 
         static void Main(string[] args)
         {
