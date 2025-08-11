@@ -34,6 +34,7 @@ namespace libCondeco
             client = new HttpClient(clientHandler)
             {
                 BaseAddress = new Uri(baseUrl),
+                Timeout = TimeSpan.FromSeconds(30)
             };
             BaseUrl = baseUrl;
         }
