@@ -238,10 +238,12 @@ namespace condeco_cli
                         {
                             (bool Success, BookingResponse BookingResponse)? bookingResult = null;
                             Exception? exception = null;
-                            var attempt = 1;
+                            var attempt = 0;
 
-                            for (attempt = 1; attempt <= 5; attempt++)
+                            for (var i = 0; i < 5; i++)
                             {
+                                attempt++;
+
                                 try
                                 {
                                     bookingResult = condeco.BookRoom(room, date, booking.BookFor);
