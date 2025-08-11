@@ -188,13 +188,24 @@ namespace libCondeco
                 """;
 
             var content = new StringContent(postStr, Encoding.UTF8, "application/json");
+            string? bookingResponseStr = null;
 
-            var bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
-            var bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
+            try
+            {
+                var bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
+                bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
 
-            bookingResponseStr = bookingResponseStr
+                bookingResponseStr = bookingResponseStr
                                         .Replace("\"", "")
                                         .Replace("\\\\n", "");
+            }
+            catch (Exception ex)
+            {
+                //Catch things such as timeouts
+                bookingResponseStr = $"Error while booking: {ex.Message}";
+            }
+
+
 
             //The booking response is not reliable. It sometimes says that the booking was successful, when it wasn't.
             //Let's get positive confirmation.
@@ -202,15 +213,27 @@ namespace libCondeco
             var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == room.WSTypeId)?.ResourceId
                                     ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {room.WSTypeId}");
 
-            var successful = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, date, bookForUser);
+            var successful = false;
+            try
+            {
+                successful = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, date, bookForUser);
+            }
+            catch (Exception ex)
+            {
+                //Catch things such as timeouts
+                bookingResponseStr ??= $"Error while confirming booking: {ex.Message}";
+            }
 
             if (successful)
             {
                 try
                 {
-                    //Sometimes this contains "You have already reserved this workspace type for this time slot"
-                    var bookingResponseObj = bookingResponseStr.ToObject<BookingResponse>();
-                    return (true, bookingResponseObj);
+                    //Sometimes this contains "You have already reserved this workspace type for this time slot", instead of BookingResponse object
+                    if (!string.IsNullOrEmpty(bookingResponseStr))
+                    {
+                        var bookingResponseObj = bookingResponseStr.ToObject<BookingResponse>();
+                        return (true, bookingResponseObj);
+                    }
                 }
                 catch
                 {
