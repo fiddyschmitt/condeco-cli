@@ -268,21 +268,23 @@ namespace libCondeco
             }
         }
 
-        public UpComingBookingsResponse GetUpcomingBookings(DateOnly date)
+        public UpComingBookingsResponse GetUpcomingBookingsResp(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={date.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={date:yyyy-MM-dd} 13:59:59";
+            fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
+            toDate ??= fromDate;
+
+            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={fromDate.Value.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={toDate.Value:yyyy-MM-dd} 13:59:59";
             var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
 
             var result = UpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
             return result;
         }
 
-        public List<UpcomingBooking> GetUpcomingBookings()
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
-            var checkinDate = DateOnly.FromDateTime(DateTime.Now.Date);
-            var upComingBookings = GetUpcomingBookings(checkinDate);
+            var upComingBookings = GetUpcomingBookingsResp(fromDate, toDate);
 
             var result = upComingBookings
                             .UpComingBookings

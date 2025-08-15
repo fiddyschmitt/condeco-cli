@@ -36,7 +36,7 @@ namespace libCondeco
         public DateTime GetBookingWindowStartDate();
         public DateTime GetBookingWindowEndDate();
         public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser);
-        public List<UpcomingBooking> GetUpcomingBookings();
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null);
         public (bool Success, string BookingStatusStr) CheckIn(UpcomingBooking bookingDetails);
 
     }

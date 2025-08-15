@@ -462,39 +462,81 @@ namespace libCondeco
             }
 
             var url = $"/MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={date:dd/MM/yyyy}|3";
-            var responseStr = client.GetStringAsync(url).Result;
 
-            var response = responseStr.ToObject<BookingResponse>();
-            if (response == null)
+            string? bookingResponseStr;
+            try
             {
-                return (false, new BookingResponse()
+                bookingResponseStr = client.GetStringAsync(url).Result;
+            }
+            catch (Exception ex)
+            {
+                //Catch things such as timeouts
+                bookingResponseStr = $"Error while booking: {ex.Message}";
+            }
+
+            var successful = false;
+            try
+            {
+                successful = BookingSuccessful(room.RoomId, date, bookForUser);
+            }
+            catch (Exception ex)
+            {
+                //Catch things such as timeouts
+                bookingResponseStr ??= $"Error while confirming booking: {ex.Message}";
+            }
+
+            if (successful)
+            {
+                try
+                {
+                    //Sometimes this contains "You have already reserved this workspace type for this time slot", instead of BookingResponse object
+                    if (!string.IsNullOrEmpty(bookingResponseStr))
+                    {
+                        var bookingResponseObj = bookingResponseStr.ToObject<BookingResponse>();
+                        return (true, bookingResponseObj);
+                    }
+                }
+                catch
+                {
+
+                }
+
+                var condecoBookingResponse = new BookingResponse()
+                {
+                    CallResponse = new Callresponse()
+                    {
+                        ResponseCode = 100,
+                        ResponseMessage = $"Booking confirmed"
+                    },
+                    CreatedBookings = []
+                };
+
+                return (true, condecoBookingResponse);
+            }
+            else
+            {
+                var condecoBookingResponse = new BookingResponse()
                 {
                     CallResponse = new Callresponse()
                     {
                         ResponseCode = 0,
-                        ResponseMessage = "Unsuccessful"
+                        ResponseMessage = $"{bookingResponseStr}"
                     },
                     CreatedBookings = []
-                });
-            }
-            else
-            {
-                if (response.CallResponse.ResponseCode == 100)
-                {
-                    return (true, response);
-                }
-                else
-                {
-                    return (false, response);
-                }
+                };
+
+                return (false, condecoBookingResponse);
             }
         }
 
-        public List<UpcomingBooking> GetUpcomingBookings()
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
             var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
 
-            var url = $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now:dd/MM/yyyy}&deskEndDate={DateTime.Now.AddDays(7):dd/MM/yyyy}&roomStartDate={DateTime.Now:dd/MM/yyyy}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0";
+            fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
+            toDate ??= fromDate;
+
+            var url = $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={fromDate:dd/MM/yyyy}&deskEndDate={toDate:dd/MM/yyyy}&roomStartDate={DateTime.Now:dd/MM/yyyy}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0";
 
             var listResultsStr = client.GetStringAsync(url).Result;
 
@@ -522,6 +564,49 @@ namespace libCondeco
                             .ToList();
 
             return result;
+        }
+
+        public bool BookingSuccessful(int deskId, DateOnly bookedForDate, BookFor? bookingFor)
+        {
+            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate);
+            var userId = GetUserId();
+
+            var successful = bookings
+                                .Where(booking =>
+                                {
+                                    var startDate = DateOnly.FromDateTime(booking.BookingStartDate);
+                                    var endDateTime = DateOnly.FromDateTime(booking.BookingEndDate);
+
+                                    var matchesDate = bookedForDate >= startDate && bookedForDate <= endDateTime;
+                                    return matchesDate;
+
+                                })
+                                .Where(booking => booking.DeskId == deskId)
+                                .Where(booking =>
+                                {
+                                    var matchesUser = true;
+
+                                    if (bookingFor?.IsExternal == "1")
+                                    {
+                                        matchesUser &= booking.BookedForFullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+                                    }
+                                    else
+                                    {
+                                        if (string.IsNullOrEmpty(bookingFor?.UserId))
+                                        {
+                                            matchesUser &= true;
+                                        }
+                                        else
+                                        {
+                                            matchesUser &= "" + booking.BookedForUserId == bookingFor.UserId;
+                                        }
+                                    }
+
+                                    return matchesUser;
+                                })
+                                .Any();
+
+            return successful;
         }
 
         public (bool Success, string BookingStatusStr) CheckIn(UpcomingBooking bookingDetails)

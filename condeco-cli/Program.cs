@@ -346,7 +346,8 @@ namespace condeco_cli
             var condeco = BuildCondecoInterface(opts, config);
             NonInteractiveLogin(condeco);
 
-            var upcomingBookings = condeco.GetUpcomingBookings();
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var upcomingBookings = condeco.GetUpcomingBookings(today);
 
             var checkinsToPerform = upcomingBookings
                                     .Where(booking => booking.BookingStartDate.Date == DateTime.Now.Date)   //the mobile API can only check in for today
