@@ -260,7 +260,7 @@ namespace condeco_cli
 
                                     var toSleepSeconds = attempt * 10;
                                     toSleepSeconds = toSleepSeconds + random.Next(0, toSleepSeconds);
-                                    Thread.Sleep(toSleepSeconds);
+                                    Thread.Sleep(toSleepSeconds * 1000);
                                 }
                             }
 
