@@ -94,8 +94,6 @@ namespace condeco_cli
 
         }
 
-        private static readonly Random random = new();
-
         static void RunAutoBook(AutoBookOptions opts)
         {
             var waitForRollover = false;
@@ -259,7 +257,7 @@ namespace condeco_cli
                                     exception = ex;
 
                                     var toSleepSeconds = attempt * 10;
-                                    toSleepSeconds = toSleepSeconds + random.Next(0, toSleepSeconds);
+                                    toSleepSeconds = toSleepSeconds + Random.Shared.Next(0, toSleepSeconds);
                                     Thread.Sleep(toSleepSeconds * 1000);
                                 }
                             }
