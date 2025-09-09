@@ -172,6 +172,9 @@ namespace condeco_cli
 
             foreach (var booking in config.Bookings)
             {
+                //make a local copy for use in the lambda
+                var bookingLocal = booking;
+
                 var daysToBook = booking
                                     .Days
                                     .Select(day => Enum.TryParse(day.Trim(), true, out DayOfWeek parsedDay) ? parsedDay : (DayOfWeek?)null)
@@ -212,6 +215,9 @@ namespace condeco_cli
                     Environment.Exit(1);
                 }
 
+                //make a local copy for use in the lambda
+                var roomLocal = room;
+
                 var datesToBook = new List<DateOnly>();
 
                 var i = 0;
@@ -244,7 +250,7 @@ namespace condeco_cli
 
                                 try
                                 {
-                                    bookingResult = condeco.BookRoom(room, date, booking.BookFor);
+                                    bookingResult = condeco.BookRoom(roomLocal, date, bookingLocal.BookFor);
 
                                     if (bookingResult.HasValue && bookingResult.Value.Success)
                                     {
@@ -274,13 +280,13 @@ namespace condeco_cli
                         {
                             Console.ForegroundColor = OriginalConsoleColour;
 
-                            if (booking.BookFor == null)
+                            if (bookingLocal.BookFor == null)
                             {
-                                Console.Write($"Booking {room.Name} for {res.Date:dd/MM/yyyy}");
+                                Console.Write($"Booking {roomLocal.Name} for {res.Date:dd/MM/yyyy}");
                             }
                             else
                             {
-                                Console.Write($"Booking {room.Name} for {booking.BookFor.FirstName} {booking.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
+                                Console.Write($"Booking {roomLocal.Name} for {bookingLocal.BookFor.FirstName} {bookingLocal.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
                             }
 
                             if (res.Attempts == 1)
