@@ -273,7 +273,8 @@ namespace condeco_cli
                                 Date = date,
                                 BookingResult = bookingResult,
                                 Exception = exception,
-                                Attempts = attempt
+                                Attempts = attempt,
+                                CompletionDate = DateTime.Now
                             };
                         }, Math.Min(16, datesToBook.Count))
                         .Select(res =>
@@ -282,11 +283,11 @@ namespace condeco_cli
 
                             if (bookingLocal.BookFor == null)
                             {
-                                Console.Write($"Booking {roomLocal.Name} for {res.Date:dd/MM/yyyy}");
+                                Console.Write($"{res.CompletionDate}  Booking {roomLocal.Name} for {res.Date:dd/MM/yyyy}");
                             }
                             else
                             {
-                                Console.Write($"Booking {roomLocal.Name} for {bookingLocal.BookFor.FirstName} {bookingLocal.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
+                                Console.Write($"{res.CompletionDate}  Booking {roomLocal.Name} for {bookingLocal.BookFor.FirstName} {bookingLocal.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
                             }
 
                             if (res.Attempts == 1)
