@@ -243,6 +243,7 @@ namespace condeco_cli
                             (bool Success, BookingResponse BookingResponse)? bookingResult = null;
                             Exception? exception = null;
                             var attempt = 0;
+                            var startTime = DateTime.Now;
 
                             for (var i = 0; i < 5; i++)
                             {
@@ -268,12 +269,15 @@ namespace condeco_cli
                                 }
                             }
 
+                            var duration = DateTime.Now - startTime;
+
                             return new
                             {
                                 Date = date,
                                 BookingResult = bookingResult,
                                 Exception = exception,
                                 Attempts = attempt,
+                                Duration = duration,
                                 CompletionDate = DateTime.Now
                             };
                         }, Math.Min(16, datesToBook.Count))
@@ -292,11 +296,11 @@ namespace condeco_cli
 
                             if (res.Attempts == 1)
                             {
-                                Console.Write($": ");
+                                Console.Write($" (took {res.Duration.TotalSeconds:N0} seconds): ");
                             }
                             else
                             {
-                                Console.Write($" after {res.Attempts} attempts: ");
+                                Console.Write($" (took {res.Duration.TotalSeconds:N0} seconds and {res.Attempts:N0} attempts): ");
                             }
 
 
