@@ -146,20 +146,20 @@ namespace condeco_cli
                 {
                     if (DateTime.Now > stopPollingAt)
                     {
-                        Console.WriteLine($"Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
+                        Console.WriteLine($"{DateTime.Now}  Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
                         Environment.Exit(1);
                     }
 
-                    Console.WriteLine($"Checking for rollover - attempt {++pollCount:N0}");
+                    Console.WriteLine($"{DateTime.Now}  Checking for rollover - attempt {++pollCount:N0}");
 
                     var bookingWindowStartDate = condeco.GetBookingWindowStartDate();
                     var bookingWindowEndDate = condeco.GetBookingWindowEndDate();
 
                     if (originalEndDate != bookingWindowEndDate)
                     {
-                        Console.WriteLine($"The new booking window is now available.");
-                        Console.WriteLine($"It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
-                        Console.WriteLine($"Will now proceed with booking.");
+                        Console.WriteLine($"{DateTime.Now}  The new booking window is now available.");
+                        Console.WriteLine($"{DateTime.Now}  It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
+                        Console.WriteLine($"{DateTime.Now}  Will now proceed with booking.");
 
                         startBookingFrom = originalEndDate.AddDays(1);
                         bookUntil = bookingWindowEndDate;
