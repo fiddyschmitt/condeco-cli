@@ -63,7 +63,7 @@ namespace condeco_cli
         void CollectUsernameAndPassword()
         {
             Collect(ref config.Account.Username, "Please enter username: ");
-            Collect(ref config.Account.Password, "Please enter password: ");
+            CollectSecret(ref config.Account.Password, "Please enter password: ");
             config.Save();
         }
 
@@ -76,6 +76,23 @@ namespace condeco_cli
             else
             {
                 value = AnsiConsole.Ask(prompt, value);
+            }
+        }
+
+        static void CollectSecret(ref string value, string prompt)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                value = AnsiConsole.Prompt(
+                    new TextPrompt<string>(prompt)
+                        .Secret());
+            }
+            else
+            {
+                value = AnsiConsole.Prompt(
+                    new TextPrompt<string>(prompt)
+                        .DefaultValue(value)
+                        .Secret());
             }
         }
 
