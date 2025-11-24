@@ -29,8 +29,20 @@ namespace condeco_cli
 
         void CollectBaseUrl()
         {
-            Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
-            config.Save();
+            while (true)
+            {
+                Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
+
+                if (Uri.TryCreate(config.Account.BaseUrl, UriKind.Absolute, out var _))
+                {
+                    config.Save();
+                    return;
+                }
+                else
+                {
+                   AnsiConsole.MarkupLine("[red]The URL entered is not valid. Please try again.[/]\n");
+                }
+            } 
         }
 
         void CollectCreds()
