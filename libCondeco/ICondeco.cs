@@ -14,6 +14,7 @@ namespace libCondeco
     {
         //server related
         public string BaseUrl { get; }
+        public DateTime GetServerDateTimeUTC();
 
         //auth related
         public (bool Success, string ErrorMessage) LogIn(string username, string password);
@@ -35,7 +36,11 @@ namespace libCondeco
         //booking related
         public DateTime GetBookingWindowStartDate();
         public DateTime GetBookingWindowEndDate();
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser);
+
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> date, BookFor? bookForUser);
         public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser);
+        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor);
         public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null);
         public (bool Success, string BookingStatusStr) CheckIn(UpcomingBooking bookingDetails);
 

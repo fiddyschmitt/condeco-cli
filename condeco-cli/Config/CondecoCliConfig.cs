@@ -76,6 +76,16 @@ namespace condeco_cli.Config
                         section["BookFor_Email"] = booking.BookFor.EmailAddress;
                         section["BookFor_IsExternal"] = booking.BookFor.IsExternal;
                     }
+
+                    if (booking.ExcludeDates.Count > 0)
+                    {
+                        var excludeDatesString = booking
+                                                    .ExcludeDates
+                                                    .Select(range => $"{range.FromDate} - {range.ToDate}")
+                                                    .ToString(", ");
+
+                        section["Exclude_Dates"] = excludeDatesString;
+                    }
                 });
 
             var iniStr = ini.ToString();
@@ -126,6 +136,26 @@ namespace condeco_cli.Config
                                 };
                             }
 
+                            List<(DateOnly FromDate, DateOnly ToDate)> excludeDates;
+                            var excludeDatesString = section["Exclude_Dates"];
+                            if (string.IsNullOrEmpty(excludeDatesString))
+                            {
+                                excludeDates = [];
+                            }
+                            else
+                            {
+                                excludeDates = excludeDatesString
+                                                .Split(",")
+                                                .Select(pair =>
+                                                {
+                                                    var tokens = pair.Split(" - ", StringSplitOptions.None);
+                                                    var fromDate = DateOnly.Parse(tokens[0]);
+                                                    var toDate = DateOnly.Parse(tokens[1]);
+                                                    return (fromDate, toDate);
+                                                })
+                                                .ToList();
+                            }
+
                             return new Booking()
                             {
                                 AutogenName = $"Booking {index + 1}",
@@ -136,7 +166,8 @@ namespace condeco_cli.Config
                                 WorkspaceType = section["WorkspaceType"],
                                 Desk = section["Desk"],
                                 Days = section["Days"].Split(",", StringSplitOptions.TrimEntries).ToList(),
-                                BookFor = bookFor
+                                BookFor = bookFor,
+                                ExcludeDates = excludeDates
                             };
                         })
                         .ToList();

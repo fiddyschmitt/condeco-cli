@@ -6,6 +6,7 @@ using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using libCondeco.Model.Web;
 using libCondeco.Model.Web.Responses;
+using libCondeco.Web;
 using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Text;
@@ -27,18 +28,17 @@ namespace libCondeco
         string userFullName = string.Empty;
         AppSettingResponse? AppSettings;     //app settings as provided by web server
 
-        public CondecoWeb(string baseUrl)
+        public CondecoWeb(IHttpClientFactory httpClientFactory, string baseUrl)
         {
             clientHandler = new HttpClientHandler
             {
                 CookieContainer = new CookieContainer()
             };
 
-            client = new HttpClient(clientHandler)
-            {
-                BaseAddress = new Uri(baseUrl),
-                Timeout = TimeSpan.FromSeconds(30)
-            };
+            client = httpClientFactory.CreateClient(clientHandler);
+            client.BaseAddress = new Uri(baseUrl);
+            client.Timeout = TimeSpan.FromMinutes(15);
+
             BaseUrl = baseUrl;
         }
 
@@ -158,14 +158,23 @@ namespace libCondeco
             return result;
         }
 
-        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser)
+        {
+            var result = SendBookingRequest(room, [date], bookForUser);
+            return result;
+        }
+
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
             bookForUser ??= BookFor.CurrentUser();
             var bookForUserStr = bookForUser.ToGeneralFormString();
 
-            var dateStr = date.ToString("%d/%M/yyyy");  //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
+            var dateStr = dates
+                            .Select(date => $"{date:%d/%M/yyyy}")           //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
+                            .Select(date => $"{date}_0;{date}_1;")
+                            .ToString("");  
 
             var postStr = $$"""
                 {
@@ -173,7 +182,7 @@ namespace libCondeco
                     "BookingSource": "1",
                     "countryID": "{{room.CountryId}}",
                     "CultureCode": "en-GB",
-                    "datesRequested": "{{dateStr}}_0;{{dateStr}}_1;",
+                    "datesRequested": "{{dateStr}}",
                     "generalForm": "{{bookForUserStr}}",
                     "groupID": "{{room.GroupId}}",
                     "IsNextDayBookingDeleted": false,
@@ -187,12 +196,23 @@ namespace libCondeco
                 }
                 """;
 
-            var content = new StringContent(postStr, Encoding.UTF8, "application/json");
-            string? bookingResponseStr = null;
+            var post = new HttpRequestMessage(HttpMethod.Post, "/webapi/BookingService/SaveDeskBooking")
+            {
+                Content = new StringContent(postStr, Encoding.UTF8, "application/json")
+            };
 
+            var result = client.SendAsync(post);
+            return result;
+        }
+
+        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser)
+        {
+            var httpRequest = SendBookingRequest(room, date, bookForUser);
+
+            string? bookingResponseStr = null;
             try
             {
-                var bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
+                var bookingResponse = httpRequest.Result;
                 bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
 
                 bookingResponseStr = bookingResponseStr
@@ -492,7 +512,16 @@ namespace libCondeco
             return result;
         }
 
-        public bool BookingSuccessful(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, int roomId, DateOnly bookedForDate, BookFor bookingFor)
+        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor)
+        {
+            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == room.WSTypeId)?.ResourceId
+                        ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {room.WSTypeId}");
+
+            var result = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, bookedForDate, bookingFor);
+            return result;
+        }
+
+        public bool BookingSuccessful(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, int roomId, DateOnly bookedForDate, BookFor? bookingFor)
         {
             var bookings = GetBookings(countryId, locationId, groupId, floorId, workspaceTypeId, resourceTypeId, bookedForDate.ToDateTime(TimeOnly.MinValue));
 
@@ -510,21 +539,24 @@ namespace libCondeco
                                 .Where(booking => booking.RoomId == roomId)
                                 .Where(booking =>
                                 {
-                                    var matchesUser = true;
+                                    bool matchesUser;
 
-                                    if (bookingFor.IsExternal == "1")
+                                    if (bookingFor?.IsExternal == "1")
                                     {
-                                        matchesUser &= booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+                                        matchesUser = booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
                                     }
                                     else
                                     {
-                                        if (bookingFor.UserId == "")
+                                        if (string.IsNullOrEmpty(bookingFor?.UserId))
                                         {
-                                            matchesUser &= "" + booking.AdditionalInfo.BookingOwnerUserID == userId;
+                                            matchesUser = "" + booking.AdditionalInfo.BookingOwnerUserID == userId;
                                         }
                                         else
                                         {
-                                            matchesUser &= "" + booking.AdditionalInfo.BookingOwnerUserID == bookingFor.UserId;
+                                            var userIdMatch = "" + booking.AdditionalInfo.BookingOwnerUserID == bookingFor.UserId;
+                                            var fullNameMatch = booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+
+                                            matchesUser = userIdMatch || fullNameMatch;
                                         }
                                     }
 
@@ -824,6 +856,24 @@ namespace libCondeco
             }
 
             File.WriteAllText(saveToFilename, str);
+        }
+
+        public DateTime GetServerDateTimeUTC()
+        {
+            var response = client.GetAsync("/api/systeminfo").Result;
+
+            DateTime result;
+
+            if (response.Headers.Date.HasValue)
+            {
+                result = response.Headers.Date.Value.UtcDateTime;
+            }
+            else
+            {
+                throw new Exception($"Server HTTP response did not contain a DateTime");
+            }
+
+            return result;
         }
 
         public DateTime GetBookingWindowStartDate()

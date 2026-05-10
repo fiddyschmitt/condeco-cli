@@ -1,4 +1,5 @@
 ﻿using CommandLine;
+using condeco_cli.Bookings;
 using condeco_cli.CLI;
 using condeco_cli.Config;
 using condeco_cli.Extensions;
@@ -6,6 +7,7 @@ using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.Common;
 using libCondeco.Model.Space;
+using libCondeco.Web;
 using Spectre.Console;
 
 namespace condeco_cli
@@ -13,7 +15,10 @@ namespace condeco_cli
     internal class Program
     {
         const string PROGRAM_NAME = "condeco-cli";
-        const string PROGRAM_VERSION = "1.6.0";
+        const string PROGRAM_VERSION = "1.7.0";
+
+        //FPS 15/11/2025: The condeco API can be called at most 50 times per second, otherwise it returns "API calls quota exceeded! maximum admitted 50 per Second."
+        private static readonly IHttpClientFactory httpClientFactory = new RateLimitedHttpClientFactory();
 
         static void Main(string[] args)
         {
@@ -91,7 +96,6 @@ namespace condeco_cli
                 Console.WriteLine("Terminating.");
                 Environment.Exit(1);
             }
-
         }
 
         static void RunAutoBook(AutoBookOptions opts)
@@ -101,13 +105,13 @@ namespace condeco_cli
             {
                 if (opts.WaitForRolloverMinutes.Value < 1)
                 {
-                    Console.WriteLine($"--wait-for-rollover must be between 1 and 5 minutes inclusive.");
+                    Console.WriteLine($"--wait-for-rollover must be between 1 and {AutoBookOptions.MAX_WAIT_DURATION_MINUTES} minutes inclusive.");
                     Environment.Exit(1);
                 }
 
-                if (opts.WaitForRolloverMinutes.Value > 5)
+                if (opts.WaitForRolloverMinutes.Value > AutoBookOptions.MAX_WAIT_DURATION_MINUTES)
                 {
-                    Console.WriteLine($"--wait-for-rollover must not exceed 5 minutes.");
+                    Console.WriteLine($"--wait-for-rollover must not exceed {AutoBookOptions.MAX_WAIT_DURATION_MINUTES} minutes.");
                     Environment.Exit(1);
                 }
 
@@ -131,211 +135,272 @@ namespace condeco_cli
             var startBookingFrom = condeco.GetBookingWindowStartDate();
             var bookUntil = condeco.GetBookingWindowEndDate();
 
+            var originalStartDate = startBookingFrom;
+            var originalEndDate = bookUntil;
+
             if (opts.WaitForRolloverMinutes != null && waitForRollover)
             {
-                //Let's wait for the new booking window
-                Console.WriteLine($"Will wait a total of {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} for the new booking window.");
-
-                var originalStartDate = condeco.GetBookingWindowStartDate();
-                var originalEndDate = condeco.GetBookingWindowEndDate();
-
-                var pollCount = 0;
-                var stopPollingAt = DateTime.Now.AddMinutes(opts.WaitForRolloverMinutes.Value);
-
-                while (true)
-                {
-                    if (DateTime.Now > stopPollingAt)
-                    {
-                        Console.WriteLine($"{DateTime.Now}  Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
-                        Environment.Exit(1);
-                    }
-
-                    Console.WriteLine($"{DateTime.Now}  Checking for rollover - attempt {++pollCount:N0}");
-
-                    var bookingWindowStartDate = condeco.GetBookingWindowStartDate();
-                    var bookingWindowEndDate = condeco.GetBookingWindowEndDate();
-
-                    if (originalEndDate != bookingWindowEndDate)
-                    {
-                        Console.WriteLine($"{DateTime.Now}  The new booking window is now available.");
-                        Console.WriteLine($"{DateTime.Now}  It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
-                        Console.WriteLine($"{DateTime.Now}  Will now proceed with booking.");
-
-                        startBookingFrom = originalEndDate.AddDays(1);
-                        bookUntil = bookingWindowEndDate;
-                        break;
-                    }
-
-                    Thread.Sleep(1000);
-                }
+                //for now, let's assume the booking window will be the same size. We'll trim it down when the new booking window opens
+                var bookingWindowSize = bookUntil - startBookingFrom;
+                startBookingFrom = bookUntil.AddDays(1);
+                bookUntil = startBookingFrom.Add(bookingWindowSize);
             }
 
-            foreach (var booking in config.Bookings)
-            {
-                //make a local copy for use in the lambda
-                var bookingLocal = booking;
-
-                var daysToBook = booking
-                                    .Days
-                                    .Select(day => Enum.TryParse(day.Trim(), true, out DayOfWeek parsedDay) ? parsedDay : (DayOfWeek?)null)
-                                    .Where(day => day.HasValue)
-                                    .ToList() ?? [];
-
-                List<Room> rooms = [];
-                try
-                {
-                    rooms = condeco.GetRooms(
-                                        booking.Country,
-                                        booking.Location,
-                                        booking.Group,
-                                        booking.Floor,
-                                        booking.WorkspaceType);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                    Environment.Exit(1);
-                }
-
-                if (rooms == null)
-                {
-                    Console.WriteLine($"Could not retrieve rooms");
-                    Environment.Exit(1);
-                }
-
-                var room = rooms.FirstOrDefault(room => room.Name.Equals(booking.Desk));
-
-                if (room == null)
-                {
-                    Console.WriteLine($"Room not found: {booking.Desk}");
-                    Console.WriteLine();
-
-                    Console.WriteLine($"Valid room:");
-                    Console.WriteLine($"{string.Join(Environment.NewLine, rooms.Select(item => $"\t{item.Name}").OrderBy(item => item))}");
-                    Environment.Exit(1);
-                }
-
-                //make a local copy for use in the lambda
-                var roomLocal = room;
-
-                var datesToBook = new List<DateOnly>();
-
-                var i = 0;
-                while (true)
-                {
-                    var date = DateOnly.FromDateTime(startBookingFrom.Date.AddDays(i));
-                    if (date.ToDateTime(TimeOnly.MinValue) > bookUntil)
-                    {
-                        break;
-                    }
-
-                    if (daysToBook.Contains(date.DayOfWeek))
-                    {
-                        datesToBook.Add(date);
-                    }
-
-                    i++;
-                }
-
-                _ = datesToBook
-                        .SelectParallelPreserveOrder(date =>
-                        {
-                            (bool Success, BookingResponse BookingResponse)? bookingResult = null;
-                            Exception? exception = null;
-                            var attempt = 0;
-                            var startTime = DateTime.Now;
-
-                            for (var i = 0; i < 5; i++)
-                            {
-                                attempt++;
-
-                                try
+            //prepare the booking tasks
+            var bookingGroups = config
+                                .Bookings
+                                .Select(booking =>
                                 {
-                                    bookingResult = condeco.BookRoom(roomLocal, date, bookingLocal.BookFor);
-
-                                    if (bookingResult.HasValue && bookingResult.Value.Success)
+                                    //retrieve the room details
+                                    List<Room> rooms = [];
+                                    try
                                     {
-                                        exception = null;
-                                        break;
+                                        rooms = condeco.GetRooms(
+                                                            booking.Country,
+                                                            booking.Location,
+                                                            booking.Group,
+                                                            booking.Floor,
+                                                            booking.WorkspaceType);
                                     }
-                                }
-                                catch (Exception ex)
-                                {
-                                    exception = ex;
-
-                                    var toSleepSeconds = attempt * 10;
-                                    toSleepSeconds = toSleepSeconds + Random.Shared.Next(0, toSleepSeconds);
-                                    Thread.Sleep(toSleepSeconds * 1000);
-                                }
-                            }
-
-                            var duration = DateTime.Now - startTime;
-
-                            return new
-                            {
-                                Date = date,
-                                BookingResult = bookingResult,
-                                Exception = exception,
-                                Attempts = attempt,
-                                Duration = duration,
-                                CompletionDate = DateTime.Now
-                            };
-                        }, Math.Min(16, datesToBook.Count))
-                        .Select(res =>
-                        {
-                            Console.ForegroundColor = OriginalConsoleColour;
-
-                            if (bookingLocal.BookFor == null)
-                            {
-                                Console.Write($"{res.CompletionDate}  Booking {roomLocal.Name} for {res.Date:dd/MM/yyyy}");
-                            }
-                            else
-                            {
-                                Console.Write($"{res.CompletionDate}  Booking {roomLocal.Name} for {bookingLocal.BookFor.FirstName} {bookingLocal.BookFor.LastName} on {res.Date:dd/MM/yyyy}");
-                            }
-
-                            if (res.Attempts == 1)
-                            {
-                                Console.Write($" (took {res.Duration.TotalSeconds:N0} seconds): ");
-                            }
-                            else
-                            {
-                                Console.Write($" (took {res.Duration.TotalSeconds:N0} seconds and {res.Attempts:N0} attempts): ");
-                            }
-
-
-                            if (res.Exception == null)
-                            {
-                                if (res.BookingResult != null)
-                                {
-                                    if (res.BookingResult.Value.Success)
+                                    catch (Exception ex)
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine($"Success");
-                                        Console.ForegroundColor = OriginalConsoleColour;
+                                        Console.WriteLine(ex.Message);
+                                        Environment.Exit(1);
+                                    }
+
+                                    if (rooms == null)
+                                    {
+                                        Console.WriteLine($"Could not retrieve rooms");
+                                        Environment.Exit(1);
+                                    }
+
+                                    var room = rooms.FirstOrDefault(room => room.Name.Equals(booking.Desk));
+
+                                    if (room == null)
+                                    {
+                                        Console.WriteLine($"Room not found: {booking.Desk}");
+                                        Console.WriteLine();
+
+                                        Console.WriteLine($"Valid room:");
+                                        Console.WriteLine($"{string.Join(Environment.NewLine, rooms.Select(item => $"\t{item.Name}").OrderBy(item => item))}");
+                                        Environment.Exit(1);
+                                    }
+
+
+                                    //determine the days to book
+                                    var daysToBook = booking
+                                                        .Days
+                                                        .Select(day => Enum.TryParse(day.Trim(), true, out DayOfWeek parsedDay) ? parsedDay : (DayOfWeek?)null)
+                                                        .Where(day => day.HasValue)
+                                                        .ToList() ?? [];
+
+                                    var datesToBook = new List<DateOnly>();
+                                    var i = 0;
+                                    while (true)
+                                    {
+                                        var date = DateOnly.FromDateTime(startBookingFrom.Date.AddDays(i));
+                                        if (date.ToDateTime(TimeOnly.MinValue) > bookUntil)
+                                        {
+                                            break;
+                                        }
+
+                                        var exclude = booking
+                                                        .ExcludeDates
+                                                        .Exists(exclude => date >= exclude.FromDate && date <= exclude.ToDate);
+
+                                        if (!exclude && daysToBook.Contains(date.DayOfWeek))
+                                        {
+                                            datesToBook.Add(date);
+                                        }
+
+                                        i++;
+                                    }
+
+                                    TimeSpan maxDuration;
+                                    if (opts.WaitForRolloverMinutes.HasValue)
+                                    {
+                                        maxDuration = TimeSpan.FromMinutes(opts.WaitForRolloverMinutes.Value);
                                     }
                                     else
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Yellow;
-                                        Console.WriteLine($"{res.BookingResult.Value.BookingResponse.CallResponse.ResponseCode}: {res.BookingResult.Value.BookingResponse.CallResponse.ResponseMessage}");
-                                        Console.ForegroundColor = OriginalConsoleColour;
+                                        maxDuration = TimeSpan.FromMinutes(AutoBookOptions.MAX_WAIT_DURATION_MINUTES);
                                     }
-                                }
-                            }
-                            else
+
+                                    var ranges = datesToBook
+                                                         .GroupAdjacent((prev, cur) => cur <= prev.AddDays(1))
+                                                         .ToList();
+
+                                    var rangeBookings = ranges
+                                                            .Select(range =>
+                                                            {
+                                                                var bookingTask = new BookingTask(condeco, booking, room, range.ToList(), maxDuration);
+
+                                                                var bookingDescription = bookingTask.ToString();
+                                                                Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Prepared task");
+
+                                                                return bookingTask;
+                                                            })
+                                                            .ToList();
+
+                                    return rangeBookings;
+                                })
+                                .ToList();
+
+            DateTime? stopAt = null;
+
+            var waitTasks = new List<Task>();
+
+            if (opts.WaitForRolloverMinutes != null && waitForRollover)
+            {
+                stopAt = DateTime.Now.AddMinutes(opts.WaitForRolloverMinutes.Value);
+
+                var waitForNewBookingWindow = Task.Factory.StartNew(() =>
+                {
+                    //Let's wait for the new booking window
+                    Console.WriteLine($"{DateTime.Now}  Will wait a total of {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} for the new booking window.");
+
+                    while (true)
+                    {
+                        try
+                        {
+                            if (DateTime.Now > stopAt)
                             {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.Write($"Failed.");
-                                Console.ForegroundColor = OriginalConsoleColour;
-                                Console.WriteLine($" {res.Exception}");
+                                Console.WriteLine($"{DateTime.Now}  Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} but the new booking window is still not available. Exiting.");
+                                Environment.Exit(1);
                             }
 
-                            return "";
-                        })
-                        .ToList();
+                            //Console.WriteLine($"{DateTime.Now}  Checking for rollover - attempt {++pollCount:N0}");
 
+                            var bookingWindowStartDate = condeco.GetBookingWindowStartDate();
+                            var bookingWindowEndDate = condeco.GetBookingWindowEndDate();
 
-                Console.WriteLine();
+                            if (originalEndDate != bookingWindowEndDate)
+                            {
+                                Console.WriteLine($"{DateTime.Now}  The new booking window is now available.");
+                                Console.WriteLine($"{DateTime.Now}  It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
+
+                                //now that the actual booking window is known, let's trim the booking tasks
+                                var notRequired = bookingGroups
+                                                    .SelectMany(bookingGroup => bookingGroup)
+                                                    .Where(bookingTask => bookingTask.Dates.First().ToDateTime(TimeOnly.MinValue) < bookingWindowStartDate || bookingTask.Dates.First().ToDateTime(TimeOnly.MinValue) > bookingWindowEndDate)
+                                                    .ToList();
+
+                                Console.WriteLine($"{DateTime.Now}  Pruning {notRequired.Count:N0} tasks which are not required.");
+                                notRequired
+                                    .ForEach(bookingTask => bookingTask.Result.Status = BookingTaskStatus.NotRequired);
+
+                                var totalBookings = bookingGroups
+                                                        .Sum(grp => grp.Count);
+
+                                Console.WriteLine($"{DateTime.Now}  {totalBookings - notRequired.Count:N0} tasks remain.");
+
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"{DateTime.Now}  Error while waiting for new booking window details: {ex.Message}.");
+                        }
+
+                        Thread.Sleep(1000);
+                    }
+                }, TaskCreationOptions.LongRunning);
+
+                var waitForHourRollover = Task.Factory.StartNew(() =>
+                {
+                    try
+                    {
+                        var currentServerTime = condeco.GetServerDateTimeUTC();
+                        var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, 0, 0).AddHours(1);
+                        //var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, currentServerTime.Minute, currentServerTime.Second).AddSeconds(10);
+
+                        var durationToWait = nextHour - currentServerTime;
+
+                        Console.WriteLine($"{DateTime.Now}  Will wait a total of {durationToWait.TotalMinutes:N2} {"minute".Pluralize((int)durationToWait.TotalMinutes)} for the hour to roll over.");
+
+                        Thread.Sleep(durationToWait);
+
+                        Console.WriteLine($"{DateTime.Now}  Hour has rolled over.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"{DateTime.Now}  Error while calculating duration until hour rolls over: {ex.Message}.");
+                    }
+                }, TaskCreationOptions.LongRunning);
+
+                //wait for the new booking window OR the hour to roll over
+                waitTasks.Add(waitForNewBookingWindow);
+                waitTasks.Add(waitForHourRollover);
+            }
+
+            if (waitTasks.Count > 0)
+            {
+                Task.WhenAny(waitTasks).Wait();
+            }
+
+            Thread.Sleep(1000);
+            Console.WriteLine($"{DateTime.Now}  Will now proceed with booking.");
+
+            var bookingTasks = bookingGroups
+                                .SelectMany(bookingGroup => bookingGroup)
+                                .ToList();
+
+            //start the booking tasks
+            bookingTasks
+                .Where(bookingTask => bookingTask.Result.Status == BookingTaskStatus.NotStarted)
+                .ToList()
+                .ForEach(bookingTask => bookingTask.StartBooking());
+
+            //monitor tasks until completion
+            foreach (var bookingTask in bookingTasks)
+            {
+                try
+                {
+                    bookingTask.StartChecking();
+
+                    var bookingDescription = bookingTask.ToString();
+
+                    while (bookingTask.Result.Status == BookingTaskStatus.InProgress)
+                    {
+                        if (stopAt.HasValue && DateTime.Now > stopAt)
+                        {
+                            Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes ?? 1)} but booking is still in progress. Exiting.");
+                            Environment.Exit(1);
+                        }
+
+                        Thread.Sleep(100);
+                    }
+
+                    var res = bookingTask.Result;
+
+                    if (res.Status == BookingTaskStatus.BookingSuccessful ||
+                        res.Status == BookingTaskStatus.BookingTimedOut)
+                    {
+                        var duration = res.AttemptsFinished - res.AttemptsStarted;
+
+                        Console.ForegroundColor = OriginalConsoleColour;
+                        Console.Write($"[{res.AttemptsStarted.TimeOfDay:hh\\:mm\\:ss} - {res.AttemptsFinished.TimeOfDay:hh\\:mm\\:ss}]  [{duration.TotalSeconds:N0} seconds]  {bookingDescription}: ");
+
+                        switch (res.Status)
+                        {
+                            case BookingTaskStatus.BookingSuccessful:
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"Success");
+                                Console.ForegroundColor = OriginalConsoleColour;
+                                break;
+
+                            case BookingTaskStatus.BookingTimedOut:
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"Timed out");
+                                Console.ForegroundColor = OriginalConsoleColour;
+                                break;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Error while monitoring task completion: {ex.Message}.");
+                }
             }
 
             condeco.LogOut();
@@ -376,10 +441,17 @@ namespace condeco_cli
                         Console.ForegroundColor = OriginalConsoleColour;
                         Console.Write($"Checking in to {upcomingBooking.BookingTitle} at {upcomingBooking.BookedLocation}");
 
-                        if (!upcomingBooking.BookedForSelf && !string.IsNullOrEmpty(upcomingBooking.BookedForFullName))
+                        string bookingFor;
+                        if (upcomingBooking.BookedForSelf)
                         {
-                            Console.Write($" for {upcomingBooking.BookedForFullName}");
+                            bookingFor = condeco.GetFullName();
                         }
+                        else
+                        {
+                            bookingFor = upcomingBooking.BookedForFullName ?? "Unknown";
+                        }
+
+                        Console.Write($" for {bookingFor}");
 
                         if (upcomingBooking.BookingId != 0)
                         {
@@ -418,7 +490,7 @@ namespace condeco_cli
                 Environment.Exit(0);
             }
 
-            var condecoWeb = new CondecoWeb(config.Account.BaseUrl);
+            var condecoWeb = new CondecoWeb(httpClientFactory, config.Account.BaseUrl);
             NonInteractiveLogin(condecoWeb);
 
             condecoWeb.Dump();
@@ -466,12 +538,12 @@ namespace condeco_cli
             ICondeco? result = null;
             if (options.API == EnumAPI.web)
             {
-                result = new CondecoWeb(condecoCliConfig.Account.BaseUrl);
+                result = new CondecoWeb(httpClientFactory, condecoCliConfig.Account.BaseUrl);
             }
 
             if (options.API == EnumAPI.mobile)
             {
-                result = new CondecoMobile(condecoCliConfig.Account.BaseUrl);
+                result = new CondecoMobile(httpClientFactory, condecoCliConfig.Account.BaseUrl);
             }
 
             if (result == null) throw new Exception($"API not supported: {options.API}");

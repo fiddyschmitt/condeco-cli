@@ -244,6 +244,7 @@ namespace condeco_cli
                     Desk = selectedRoom,
                     Days = selectedDays,
                     BookFor = bookFor,
+                    ExcludeDates = []
                 };
             }
             else
@@ -468,7 +469,7 @@ namespace condeco_cli
             {
                 AnsiConsole.Clear();
 
-                PrintBookings(config.Bookings, null, condeco.GetFullName());
+                PrintBookings(config.Bookings, null, condeco);
 
                 var addBooking = "Add a new booking";
                 var editBooking = "Edit a booking";
@@ -514,7 +515,7 @@ namespace condeco_cli
                         var booking = bookingsLookup[selectedBooking];
 
                         AnsiConsole.Clear();
-                        PrintBookings(config.Bookings, booking.AutogenName, condeco.GetFullName());
+                        PrintBookings(config.Bookings, booking.AutogenName, condeco);
                         PromptForBookingDetails(condeco, booking);
                         config.Save();
                     }
@@ -548,21 +549,29 @@ namespace condeco_cli
             }
         }
 
-        private static void PrintBookings(List<Booking> bookings, string? highlightBooking, string? currentUserFullName)
+        private static void PrintBookings(List<Booking> bookings, string? highlightBooking, ICondeco condeco)
         {
             if (bookings.Count == 0) return;
 
             var table = new Table()
                             .AddColumns(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.AutogenName}[/]" : booking.AutogenName).ToArray())
+                                .AddRow(bookings.Select(booking =>
+                                {
+                                    var bookingFor = booking.GetBookingForFullName(condeco);
+
+                                    var cells = booking.AutogenName.Equals(highlightBooking) ?
+                                        $"[yellow]{bookingFor}[/]" :
+                                        $"{bookingFor}";
+                                    return cells;
+
+                                }).ToArray())
+                                .AddRow(bookings.Select(_ => "").ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Country}[/]" : booking.Country).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Location}[/]" : booking.Location).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Group}[/]" : booking.Group).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Floor}[/]" : booking.Floor).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.WorkspaceType}[/]" : booking.WorkspaceType).ToArray())
                                 .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ? $"[yellow]{booking.Desk}[/]" : booking.Desk).ToArray())
-                                .AddRow(bookings.Select(booking => booking.AutogenName.Equals(highlightBooking) ?
-                                    $"[yellow]{(booking.BookFor == null || string.IsNullOrEmpty(booking.BookFor.UserId) ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}[/]" :
-                                    $"{(booking.BookFor == null || string.IsNullOrEmpty(booking.BookFor.UserId) ? currentUserFullName : booking.BookFor.FirstName + " " + booking.BookFor.LastName)}").ToArray())
                                 .AddRow(bookings.Select(_ => "").ToArray());
 
             var daysOfWeek = Enum

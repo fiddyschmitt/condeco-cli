@@ -5,6 +5,7 @@ using libCondeco.Model.Mobile.Responses;
 using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using libCondeco.Model.Web.Responses;
+using libCondeco.Web;
 using Newtonsoft.Json.Linq;
 using System.Linq;
 using System.Net;
@@ -15,7 +16,7 @@ namespace libCondeco
 {
     public class CondecoMobile : ICondeco
     {
-        readonly HttpClientHandler clientHandler;
+        readonly HttpMessageHandler clientHandler;
         readonly HttpClient client;
 
         string userIdLong = string.Empty;
@@ -24,18 +25,18 @@ namespace libCondeco
 
         public string BaseUrl { get; }
 
-        public CondecoMobile(string baseUrl)
+        public CondecoMobile(IHttpClientFactory httpClientFactory, string baseUrl)
         {
-            clientHandler = new HttpClientHandler
+            clientHandler = new SocketsHttpHandler
             {
-                CookieContainer = new CookieContainer()
+                CookieContainer = new CookieContainer(),
+                ConnectTimeout = TimeSpan.FromMinutes(15)
             };
 
-            client = new HttpClient(clientHandler)
-            {
-                BaseAddress = new Uri(baseUrl),
-                Timeout = TimeSpan.FromSeconds(30)
-            };
+            client = httpClientFactory.CreateClient(clientHandler);
+            client.BaseAddress = new Uri(baseUrl);
+            client.Timeout = TimeSpan.FromMinutes(15);
+
             BaseUrl = baseUrl;
         }
 
@@ -212,9 +213,9 @@ namespace libCondeco
             var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(lower)); // NO_WRAP equivalent
             int targetLen = thirtyTwo ? 32 : 16;
             if (b64.Length < targetLen)
-                b64 = b64 + new string('0', targetLen - b64.Length);
+                b64 += new string('0', targetLen - b64.Length);
             if (b64.Length > targetLen)
-                b64 = b64.Substring(0, targetLen);
+                b64 = b64[..targetLen];
             return b64;
         }
 
@@ -228,6 +229,35 @@ namespace libCondeco
             using var enc = aes.CreateEncryptor();
             var ct = enc.TransformFinalBlock(plaintext, 0, plaintext.Length);
             return Convert.ToBase64String(ct);
+        }
+
+        public static string Decrypt(
+        string ciphertextBase64,
+        string url,
+        string version)
+        {
+            // Mirror Encrypt: derive key/iv in exactly the same way
+            var c02 = T_c0(url.Replace("https", "", StringComparison.OrdinalIgnoreCase), true);
+            var c03 = T_c0(version, false);
+
+            var keyBytes = Encoding.UTF8.GetBytes(c02); // 32 bytes
+            var ivBytes = Encoding.UTF8.GetBytes(c03); // 16 bytes
+
+            var plaintextBytes = AesDecryptFromBase64(ciphertextBase64, keyBytes, ivBytes);
+            return Encoding.UTF8.GetString(plaintextBytes);
+        }
+
+        private static byte[] AesDecryptFromBase64(string base64Ciphertext, byte[] key, byte[] iv)
+        {
+            using var aes = Aes.Create();
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            aes.Key = key;
+            aes.IV = iv;
+
+            using var dec = aes.CreateDecryptor();
+            var ciphertextBytes = Convert.FromBase64String(base64Ciphertext);
+            return dec.TransformFinalBlock(ciphertextBytes, 0, ciphertextBytes.Length);
         }
 
         public string GetFullName()
@@ -407,9 +437,20 @@ namespace libCondeco
 
         public DateTime GetServerDateTimeUTC()
         {
-            var geoInfo = GetGeoInformation();
+            var response = client.GetAsync("/api/systeminfo").Result;
 
-            return geoInfo.CurrentTimeUTC;
+            DateTime result;
+
+            if (response.Headers.Date.HasValue)
+            {
+                result = response.Headers.Date.Value.UtcDateTime;
+            }
+            else
+            {
+                throw new Exception($"Server HTTP response did not contain a DateTime");
+            }
+
+            return result;
         }
 
         public DateTime GetBookingWindowStartDate()
@@ -445,7 +486,13 @@ namespace libCondeco
             return groupSettings;
         }
 
-        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser)
+        {
+            var result = SendBookingRequest(room, [date], bookForUser);
+            return result;
+        }
+
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
             if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
@@ -461,12 +508,24 @@ namespace libCondeco
                 userIdToBookFor = int.Parse(bookForUser.UserId);
             }
 
-            var url = $"/MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={date:dd/MM/yyyy}|3";
+            var dateStr = dates
+                            .Select(date => $"{date:dd/MM/yyyy}|3")
+                            .ToString(",");
+
+            var url = $" /MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={dateStr}";
+
+            var result = client.GetAsync(url);
+            return result;
+        }
+
+        public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser)
+        {
+            var httpRequest = SendBookingRequest(room, date, bookForUser);
 
             string? bookingResponseStr;
             try
             {
-                bookingResponseStr = client.GetStringAsync(url).Result;
+                bookingResponseStr = httpRequest.Result.Content.ReadAsStringAsync().Result;
             }
             catch (Exception ex)
             {
@@ -477,7 +536,7 @@ namespace libCondeco
             var successful = false;
             try
             {
-                successful = BookingSuccessful(room.RoomId, date, bookForUser);
+                successful = BookingSuccessful(room, date, bookForUser);
             }
             catch (Exception ex)
             {
@@ -566,7 +625,7 @@ namespace libCondeco
             return result;
         }
 
-        public bool BookingSuccessful(int deskId, DateOnly bookedForDate, BookFor? bookingFor)
+        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor)
         {
             var bookings = GetUpcomingBookings(bookedForDate, bookedForDate);
             var userId = GetUserId();
@@ -581,24 +640,27 @@ namespace libCondeco
                                     return matchesDate;
 
                                 })
-                                .Where(booking => booking.DeskId == deskId)
+                                .Where(booking => booking.DeskId == room.RoomId)
                                 .Where(booking =>
                                 {
-                                    var matchesUser = true;
+                                    bool matchesUser;
 
                                     if (bookingFor?.IsExternal == "1")
                                     {
-                                        matchesUser &= booking.BookedForFullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+                                        matchesUser = booking.BookedForFullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
                                     }
                                     else
                                     {
                                         if (string.IsNullOrEmpty(bookingFor?.UserId))
                                         {
-                                            matchesUser &= true;
+                                            matchesUser = true;
                                         }
                                         else
                                         {
-                                            matchesUser &= "" + booking.BookedForUserId == bookingFor.UserId;
+                                            var userIdMatch = "" + booking.BookedForUserId == bookingFor.UserId;
+                                            var fullNameMatch = booking.BookedForFullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
+
+                                            matchesUser = userIdMatch || fullNameMatch;
                                         }
                                     }
 
@@ -635,7 +697,7 @@ namespace libCondeco
 
             var postResponse = client.PostAsync($"/MobileAPI/MobileService.svc/User/SendMagicLink", postContent).Result;
             postResponse.EnsureSuccessStatusCode();
-            var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
+            _ = postResponse.Content.ReadAsStringAsync().Result;
 
             //use the response for /MobileAPI/MobileService.svc/User/LoginWithMagicLink
         }

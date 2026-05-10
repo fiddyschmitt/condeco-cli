@@ -11,7 +11,9 @@ namespace condeco_cli.CLI
     [Verb("--autobook", HelpText = "Automatically book the rooms specified in config.ini")]
     public class AutoBookOptions : BaseOptions
     {
-        [Option("wait-for-rollover", Required = false, HelpText = "Continously query the server until the new booking window becomes available. Specify the number of minutes to poll for. Max 5 minutes.")]
+        [Option("wait-for-rollover", Required = false, HelpText = "Wait for the new booking window to be available. Specify the number of minutes to wait for. Max 30 minutes.")]
         public int? WaitForRolloverMinutes { get; set; } = null;
+
+        public const int MAX_WAIT_DURATION_MINUTES = 30;
     }
 }
