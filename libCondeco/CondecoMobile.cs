@@ -453,13 +453,6 @@ namespace libCondeco
             return result;
         }
 
-        public DateTime? GetNextRefreshTimeUTC()
-        {
-            if (loginInfo == null) return null;
-            if (loginInfo.NextRefreshTimeUTC == DateTime.MinValue) return null;
-            return loginInfo.NextRefreshTimeUTC;
-        }
-
         public DateTime GetBookingWindowStartDate()
         {
             return DateTime.Now.Date;
