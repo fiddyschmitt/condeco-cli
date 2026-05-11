@@ -338,7 +338,6 @@ namespace condeco_cli
                 Task.WhenAny(waitTasks).Wait();
             }
 
-            Thread.Sleep(1000);
             Console.WriteLine($"{DateTime.Now}  Will now proceed with booking.");
 
             var bookingTasks = bookingGroups
