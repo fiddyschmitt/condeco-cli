@@ -2,6 +2,7 @@
 using libCondeco.Extensions;
 using libCondeco.Model.Bookings;
 using libCondeco.Model.Common;
+using libCondeco.Model.Mobile.Responses;
 using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using libCondeco.Model.Web;
@@ -27,6 +28,7 @@ namespace libCondeco
         string? userIdLong;
         string userFullName = string.Empty;
         AppSettingResponse? AppSettings;     //app settings as provided by web server
+        LoginInformationsV2Response? loginInfo;
 
         public CondecoWeb(IHttpClientFactory httpClientFactory, string baseUrl)
         {
@@ -129,6 +131,8 @@ namespace libCondeco
                 var appSettingsJson = client.GetStringAsync($"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}").Result;
                 AppSettings = AppSettingResponse.FromServerResponse(appSettingsJson);
 
+                var loginInfoJson = client.GetStringAsync($"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US").Result;
+                loginInfo = LoginInformationsV2Response.FromServerResponse(loginInfoJson);
 
                 loginSuccessful = true;
                 return (true, string.Empty);
@@ -874,6 +878,13 @@ namespace libCondeco
             }
 
             return result;
+        }
+
+        public DateTime? GetNextRefreshTimeUTC()
+        {
+            if (loginInfo == null) return null;
+            if (loginInfo.NextRefreshTimeUTC == DateTime.MinValue) return null;
+            return loginInfo.NextRefreshTimeUTC;
         }
 
         public DateTime GetBookingWindowStartDate()

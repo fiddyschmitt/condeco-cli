@@ -15,6 +15,7 @@ namespace libCondeco
         //server related
         public string BaseUrl { get; }
         public DateTime GetServerDateTimeUTC();
+        public DateTime? GetNextRefreshTimeUTC();
 
         //auth related
         public (bool Success, string ErrorMessage) LogIn(string username, string password);
