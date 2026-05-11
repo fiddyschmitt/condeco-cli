@@ -93,12 +93,18 @@ namespace condeco_cli.Bookings
                     if (bookingResponseTask.IsCompleted)
                     {
                         var responseStr = bookingResponseTask.Result.Content.ReadAsStringAsync().Result;
+                        Result.Outcome = responseStr;
                         Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Result: {responseStr}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Error while sending booking request: {ex}");
+                    var innermost = ex;
+                    while (innermost is AggregateException agg && agg.InnerException != null)
+                        innermost = agg.InnerException;
+
+                    Result.Outcome = innermost.Message;
+                    Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Error while sending booking request: {innermost}");
                 }
             }, TaskCreationOptions.LongRunning);
         }
