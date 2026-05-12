@@ -29,8 +29,20 @@ namespace condeco_cli
 
         void CollectBaseUrl()
         {
-            Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
-            config.Save();
+            while (true)
+            {
+                Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
+
+                if (Uri.TryCreate(config.Account.BaseUrl, UriKind.Absolute, out var _))
+                {
+                    config.Save();
+                    return;
+                }
+                else
+                {
+                   AnsiConsole.MarkupLine("[red]The URL entered is not valid. Please try again.[/]\n");
+                }
+            } 
         }
 
         void CollectCreds()
@@ -63,7 +75,7 @@ namespace condeco_cli
         void CollectUsernameAndPassword()
         {
             Collect(ref config.Account.Username, "Please enter username: ");
-            Collect(ref config.Account.Password, "Please enter password: ");
+            CollectSecret(ref config.Account.Password, "Please enter password: ");
             config.Save();
         }
 
@@ -76,6 +88,23 @@ namespace condeco_cli
             else
             {
                 value = AnsiConsole.Ask(prompt, value);
+            }
+        }
+
+        static void CollectSecret(ref string value, string prompt)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                value = AnsiConsole.Prompt(
+                    new TextPrompt<string>(prompt)
+                        .Secret());
+            }
+            else
+            {
+                value = AnsiConsole.Prompt(
+                    new TextPrompt<string>(prompt)
+                        .DefaultValue(value)
+                        .Secret());
             }
         }
 
