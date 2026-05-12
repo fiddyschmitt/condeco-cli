@@ -216,13 +216,10 @@ namespace libCondeco
             //The booking response is not reliable. It sometimes says that the booking was successful, when it wasn't.
             //Let's get positive confirmation.
 
-            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == room.WSTypeId)?.ResourceId
-                                    ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {room.WSTypeId}");
-
             var successful = false;
             try
             {
-                successful = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, date, bookForUser);
+                successful = BookingSuccessful(room, date, bookForUser);
             }
             catch (Exception ex)
             {
@@ -500,53 +497,22 @@ namespace libCondeco
 
         public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor)
         {
-            var resourceTypeId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == room.WSTypeId)?.ResourceId
-                        ?? throw new Exception($"Cannot look up the ResourceId for WorkstationTypeId: {room.WSTypeId}");
-
-            var result = BookingSuccessful(room.CountryId, room.LocationId, room.GroupId, room.FloorId, room.WSTypeId, resourceTypeId, room.RoomId, bookedForDate, bookingFor);
-            return result;
-        }
-
-        public bool BookingSuccessful(int countryId, int locationId, int groupId, int floorId, int workspaceTypeId, int resourceTypeId, int roomId, DateOnly bookedForDate, BookFor? bookingFor)
-        {
-            var bookings = GetBookings(countryId, locationId, groupId, floorId, workspaceTypeId, resourceTypeId, bookedForDate.ToDateTime(TimeOnly.MinValue));
+            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate);
 
             var successful = bookings
-                                .Meetings
-                                .Where(booking =>
+                                .Where(b => b.DeskId == room.RoomId)
+                                .Where(b =>
                                 {
-                                    var startDate = DateOnly.FromDateTime(booking.Start);
-                                    var endDateTime = DateOnly.FromDateTime(booking.End);
-
-                                    var matchesDate = bookedForDate > startDate && bookedForDate <= endDateTime;
-                                    return matchesDate;
-
+                                    var bookingDate = DateOnly.FromDateTime(b.BookingStartDate);
+                                    return bookingDate == bookedForDate;
                                 })
-                                .Where(booking => booking.RoomId == roomId)
-                                .Where(booking =>
+                                .Where(b =>
                                 {
-                                    bool matchesUser;
+                                    if (bookingFor == null || string.IsNullOrEmpty(bookingFor.UserId))
+                                        return b.BookedForSelf;
 
-                                    if (bookingFor?.IsExternal == "1")
-                                    {
-                                        matchesUser = booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
-                                    }
-                                    else
-                                    {
-                                        if (string.IsNullOrEmpty(bookingFor?.UserId))
-                                        {
-                                            matchesUser = "" + booking.AdditionalInfo.BookingOwnerUserID == userId;
-                                        }
-                                        else
-                                        {
-                                            var userIdMatch = "" + booking.AdditionalInfo.BookingOwnerUserID == bookingFor.UserId;
-                                            var fullNameMatch = booking.AdditionalInfo.FullName == $"{bookingFor.FirstName} {bookingFor.LastName}";
-
-                                            matchesUser = userIdMatch || fullNameMatch;
-                                        }
-                                    }
-
-                                    return matchesUser;
+                                    var expectedName = $"{bookingFor.FirstName} {bookingFor.LastName}";
+                                    return b.BookedForFullName == expectedName;
                                 })
                                 .Any();
 
