@@ -702,6 +702,14 @@ namespace libCondeco
             var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
 
             GetJson(client, $"/api/systeminfo", Path.Combine(outputFolder, "systeminfo.json"));
+
+            // Legacy fallback for /api/systeminfo (servers that return 404). Contains encrypted auth config (forms vs SSO, OAuth settings).
+            GetJson(client, $"/MobileAPI/DeskBookingService.svc/Configuration/GetGlobalSettings", Path.Combine(outputFolder, "GetGlobalSettings.json"));
+
+            DecryptJsonFile(
+                Path.Combine(outputFolder, "GetGlobalSettings.json"),
+                Path.Combine(outputFolder, "GetGlobalSettings-dec.json"));
+
             GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/GetAllRoles?userlongId={userIdLong}&cultureCode=en-US", Path.Combine(outputFolder, "GetAllRoles.json"));
             GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now:dd/MM/yyyy}&endDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
@@ -819,6 +827,30 @@ namespace libCondeco
 
             Console.WriteLine($"Dump complete.");
             Console.WriteLine($"Wrote to folder: {outputFolder}");
+        }
+
+        public static void DecryptJsonFile(string encryptedFilename, string outputFilename)
+        {
+            try
+            {
+                var obj = JObject.Parse(File.ReadAllText(encryptedFilename));
+
+                foreach (var prop in obj.Properties().ToList())
+                {
+                    if (prop.Value.Type != JTokenType.String) continue;
+                    try
+                    {
+                        obj[prop.Name] = CondecoMobile.LegacyTwoStepDecrypt(prop.Value.ToString());
+                    }
+                    catch { }
+                }
+
+                File.WriteAllText(outputFilename, obj.ToString());
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(outputFilename, $"Decryption failed: {ex.Message}");
+            }
         }
 
         public static void GetJson(HttpClient client, string url, string saveToFilename)

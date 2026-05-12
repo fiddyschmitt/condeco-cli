@@ -191,17 +191,23 @@ namespace libCondeco
             ///MobileAPI/MobileService.svc/notification/unregister?token=&installationId=
         }
 
+        private static string StripHttpsPrefix(string url)
+        {
+            if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return url["https://".Length..];
+            return url;
+        }
+
         public static string Encrypt(
                 string plaintext,
                 string url,
                 string version)
         {
-
-            var c02 = T_c0(url.Replace("https", "", StringComparison.OrdinalIgnoreCase), true);
+            var c02 = T_c0(StripHttpsPrefix(url), true);
             var c03 = T_c0(version, false);
 
-            var keyBytes = Encoding.UTF8.GetBytes(c02); // 32 bytes
-            var ivBytes = Encoding.UTF8.GetBytes(c03); // 16 bytes
+            var keyBytes = Encoding.UTF8.GetBytes(c02);
+            var ivBytes = Encoding.UTF8.GetBytes(c03);
 
             var result = AesEncryptToBase64(Encoding.UTF8.GetBytes(plaintext), keyBytes, ivBytes);
             return result;
@@ -228,7 +234,7 @@ namespace libCondeco
             aes.IV = iv;
             using var enc = aes.CreateEncryptor();
             var ct = enc.TransformFinalBlock(plaintext, 0, plaintext.Length);
-            return Convert.ToBase64String(ct);
+            return Convert.ToBase64String(ct) + "\n";
         }
 
         public static string Decrypt(
@@ -236,8 +242,7 @@ namespace libCondeco
         string url,
         string version)
         {
-            // Mirror Encrypt: derive key/iv in exactly the same way
-            var c02 = T_c0(url.Replace("https", "", StringComparison.OrdinalIgnoreCase), true);
+            var c02 = T_c0(StripHttpsPrefix(url), true);
             var c03 = T_c0(version, false);
 
             var keyBytes = Encoding.UTF8.GetBytes(c02); // 32 bytes
@@ -258,6 +263,21 @@ namespace libCondeco
             using var dec = aes.CreateDecryptor();
             var ciphertextBytes = Convert.FromBase64String(base64Ciphertext);
             return dec.TransformFinalBlock(ciphertextBytes, 0, ciphertextBytes.Length);
+        }
+
+        public static string LegacyTwoStepDecrypt(string base64Ciphertext)
+        {
+            var packageName = "com.condecosoftware.condeco";
+            var stage1Key = Encoding.UTF8.GetBytes((packageName + "00000")[..32]);
+            var stage1Iv = Encoding.UTF8.GetBytes(packageName[..16]);
+
+            var dynamicKey = AesDecryptFromBase64("Rv4nnT9Ni00prLokbhT/3m6PP6/kA1bjsoK4p9I8P2BH5BG/V+qDNodaRJhw4EbM", stage1Key, stage1Iv);
+            var dynamicIv = AesDecryptFromBase64("j2ElkxFAeqQzY9lJOhuWlCVncatpeS9EeMffvEg/Pik=", stage1Key, stage1Iv);
+
+            return Encoding.UTF8.GetString(AesDecryptFromBase64(
+                base64Ciphertext,
+                dynamicKey,
+                dynamicIv));
         }
 
         public string GetFullName()
