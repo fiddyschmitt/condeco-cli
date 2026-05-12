@@ -1,5 +1,4 @@
-﻿using HtmlAgilityPack;
-using libCondeco.Extensions;
+﻿using libCondeco.Extensions;
 using libCondeco.Model.Bookings;
 using libCondeco.Model.Common;
 using libCondeco.Model.People;
@@ -10,6 +9,7 @@ using libCondeco.Web;
 using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace libCondeco
@@ -46,24 +46,17 @@ namespace libCondeco
         {
             try
             {
-                //open the login page, to get the ASP.NET session vars
+                //get the login page to obtain ASP.NET anti-forgery tokens
                 var loginInitialHtml = client.GetStringAsync("/login/login.aspx").Result;
-                var doc = new HtmlDocument();
-                doc.LoadHtml(loginInitialHtml);
 
-                //read the ASP.NET session vars from the HTML
-                var viewState = doc.DocumentNode.SelectSingleNode($"//input[@name='__VIEWSTATE']").GetAttributeValue("value", "");
-                var viewStateGenerator = doc.DocumentNode.SelectSingleNode($"//input[@name='__VIEWSTATEGENERATOR']").GetAttributeValue("value", "");
-                var eventValidation = doc.DocumentNode.SelectSingleNode($"//input[@name='__EVENTVALIDATION']").GetAttributeValue("value", "");
+                var viewState = GetHiddenInputValue(loginInitialHtml, "__VIEWSTATE");
+                var viewStateGenerator = GetHiddenInputValue(loginInitialHtml, "__VIEWSTATEGENERATOR");
+                var eventValidation = GetHiddenInputValue(loginInitialHtml, "__EVENTVALIDATION");
 
-                //login into condeco
                 var loginContent = new FormUrlEncodedContent([
-                    new KeyValuePair<string, string>("__EVENTTARGET", ""),
-                    new KeyValuePair<string, string>("__EVENTARGUMENT", ""),
                     new KeyValuePair<string, string>("__VIEWSTATE", viewState),
                     new KeyValuePair<string, string>("__VIEWSTATEGENERATOR", viewStateGenerator),
                     new KeyValuePair<string, string>("__EVENTVALIDATION", eventValidation),
-
                     new KeyValuePair<string, string>("txtUserName", username),
                     new KeyValuePair<string, string>("txtPassword", password),
                     //new KeyValuePair<string, string>("chkRememberMe", "on"),
@@ -71,43 +64,26 @@ namespace libCondeco
                 ]);
 
                 var loginResponse = client.PostAsync("/login/login.aspx", loginContent).Result;
-                var loginResponseStr = loginResponse.Content.ReadAsStringAsync().Result;
 
                 if (!loginResponse.IsSuccessStatusCode)
                 {
                     return (false, $"Could not log in: {loginResponse}");
                 }
 
-                //retrieve the UserId from the html
-                userId = loginResponseStr.Split("var int_userID = ", StringSplitOptions.None).Last().Split(";", StringSplitOptions.None).First();
-                if (userId == null)
-                {
-                    return (false, $"Could not extract UserId from HTML");
-                }
-
-                userFullName = loginResponseStr.Split("var userFullName = '", StringSplitOptions.None).Last().Split("';", StringSplitOptions.None).First();
-
-                //retrieve the userIdLong from the cookie
                 userIdLong = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["CONDECO"]?.Value.Split("=").Last();
                 if (userIdLong == null)
                 {
-                    return (false, $"CONDECO cookie was not retrieved.");
+                    return (false, $"Log in details not found. Check your username and password.");
                 }
 
-                //get a token for logging into the Enterprise
+                //get a token for logging into EnterpriseLite
                 var entLoginResponseStr = client.GetStringAsync("/EnterpriseLiteLogin.aspx").Result;
-                doc.LoadHtml(entLoginResponseStr);
-                var token = doc.DocumentNode.SelectSingleNode($"//input[@name='token']").GetAttributeValue("value", "");
+                var token = GetHiddenInputValue(entLoginResponseStr, "token");
 
-                //authenticate into Enterprise
                 var authContent = new FormUrlEncodedContent([
                     new KeyValuePair<string, string>("token", token)
                     ]);
 
-                //this results in the 'EliteSession' cookie being retrieved.
-                //It's also possible to retrieve the EliteSession token using:
-                //POST to /ServiceCall.aspx/GetJsonToken
-                //GET to  /EnterpriseLite/api/User/GetUserSessionInfo
                 var authResponse = client.PostAsync("/enterpriselite/auth", authContent).Result;
 
                 if (!authResponse.IsSuccessStatusCode)
@@ -122,13 +98,17 @@ namespace libCondeco
                     return (false, $"EliteSession cookie was not retrieved.");
                 }
 
-                //use the eliteSessionToken for future requests
                 client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", eliteSessionToken);
 
-                //collect the App Settings
+                //get user info and app settings from the API instead of parsing JavaScript
+                var sessionInfoBase64 = client.GetStringAsync("/EnterpriseLite/api/User/GetUserSessionInfo").Result;
+                var sessionInfoJson = Encoding.UTF8.GetString(Convert.FromBase64String(sessionInfoBase64.Trim('"')));
+                var sessionInfo = JObject.Parse(sessionInfoJson);
+                userId = sessionInfo["userId"]?.ToString();
+                userFullName = sessionInfo["firstName"] + " " + sessionInfo["lastName"];
+
                 var appSettingsJson = client.GetStringAsync($"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}").Result;
                 AppSettings = AppSettingResponse.FromServerResponse(appSettingsJson);
-
 
                 loginSuccessful = true;
                 return (true, string.Empty);
@@ -147,6 +127,12 @@ namespace libCondeco
         public string GetFullName()
         {
             return userFullName;
+        }
+
+        static string GetHiddenInputValue(string html, string name)
+        {
+            var match = Regex.Match(html, $@"name=['""]{ Regex.Escape(name)}['""][^>]*value=['""]([^'""]*)['""]");
+            return match.Success ? match.Groups[1].Value : throw new Exception($"Could not find hidden input '{name}' in HTML");
         }
 
         //Book for current user
