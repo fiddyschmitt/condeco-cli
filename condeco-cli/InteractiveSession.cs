@@ -160,7 +160,9 @@ namespace condeco_cli
 
         static Booking PromptForBookingDetails(ICondeco condeco, Booking? edit)
         {
-            var promptIfRequired = new Func<List<string>, string, string>((Items, Prompt) =>
+            const string currentSuffix = " (current)";
+
+            var promptIfRequired = new Func<List<string>, string, string?, string>((Items, Prompt, currentValue) =>
             {
                 string selectedValue;
                 if (Items.Count == 1)
@@ -169,9 +171,16 @@ namespace condeco_cli
                 }
                 else
                 {
+                    var choices = Items.ToList();
+                    if (currentValue != null && choices.Remove(currentValue))
+                        choices.Insert(0, currentValue + currentSuffix);
+
                     selectedValue = AnsiConsole.Prompt(new SelectionPrompt<string>()
                                                                 .Title(Prompt)
-                                                                .AddChoices(Items));
+                                                                .AddChoices(choices));
+
+                    if (selectedValue.EndsWith(currentSuffix))
+                        selectedValue = selectedValue[..^currentSuffix.Length];
                 }
 
                 return selectedValue;
@@ -186,7 +195,7 @@ namespace condeco_cli
                                 .ToList();
 
 
-            var selectedCountryName = promptIfRequired(countryNames, "Country: ");
+            var selectedCountryName = promptIfRequired(countryNames, "Country: ", edit?.Country);
 
 
 
@@ -206,7 +215,7 @@ namespace condeco_cli
                                 .OrderBy(name => name)
                                 .ToList();
 
-            var selectedLocation = promptIfRequired(locationNames, "Location: ");
+            var selectedLocation = promptIfRequired(locationNames, "Location: ", edit?.Location);
 
             breadcrumbs += $" >> {selectedLocation}";
 
@@ -222,7 +231,7 @@ namespace condeco_cli
                                 .OrderBy(name => name)
                                 .ToList();
 
-            var selectedGroup = promptIfRequired(groupNames, "Group: ");
+            var selectedGroup = promptIfRequired(groupNames, "Group: ", edit?.Group);
 
             breadcrumbs += $" >> {selectedGroup}";
 
@@ -238,7 +247,7 @@ namespace condeco_cli
                                 .OrderBy(name => name)
                                 .ToList();
 
-            var selectedFloor = promptIfRequired(floorNames, "Floor: ");
+            var selectedFloor = promptIfRequired(floorNames, "Floor: ", edit?.Floor);
 
             breadcrumbs += $" >> {selectedFloor}";
 
@@ -254,7 +263,7 @@ namespace condeco_cli
                                         .OrderBy(name => name)
                                         .ToList();
 
-            var selectedWorkspaceType = promptIfRequired(workspaceTypeNames, "Workspace Type: ");
+            var selectedWorkspaceType = promptIfRequired(workspaceTypeNames, "Workspace Type: ", edit?.WorkspaceType);
 
             breadcrumbs += $" >> {selectedWorkspaceType}";
 
@@ -274,7 +283,7 @@ namespace condeco_cli
                                 .Select(room => room.Name)
                                 .ToList();
 
-            var selectedRoom = promptIfRequired(roomNames, "Room Name: ");
+            var selectedRoom = promptIfRequired(roomNames, "Room Name: ", edit?.Desk);
 
 
 
@@ -286,13 +295,15 @@ namespace condeco_cli
                                 .Select(day => day.ToString())
                                 .ToList();
 
-            var selectedDays = AnsiConsole
-                                    .Prompt(
-                                        new MultiSelectionPrompt<string>()
-                                            .Title("Days: ")
-                                            .InstructionsText("[grey](Press <space> to selected a day, <enter> to accept)[/]")
-                                            .AddChoices(daysOfWeek))
-                                    .ToList();
+            var daysPrompt = new MultiSelectionPrompt<string>()
+                                .Title("Days: ")
+                                .InstructionsText("[grey](Press <space> to selected a day, <enter> to accept)[/]")
+                                .AddChoices(daysOfWeek);
+
+            if (edit != null)
+                edit.Days.ForEach(day => daysPrompt.Select(day));
+
+            var selectedDays = AnsiConsole.Prompt(daysPrompt).ToList();
 
             var canBookForOthers = condeco.CanBookForOthers(selectedLocation, selectedWorkspaceType, selectedGroup);
             var canBookForExternalUser = condeco.CanBookForOthersExternal(selectedLocation, selectedWorkspaceType, selectedGroup);
@@ -611,8 +622,7 @@ namespace condeco_cli
                 }
                 else
                 {
-                    //edit is not very helpful because SpectreConsole's SelectPrompt doesn't support Default Values. See: https://github.com/spectreconsole/spectre.console/issues/508
-                    actionChoices = [addBooking, deleteBooking, quit];
+                    actionChoices = [addBooking, editBooking, deleteBooking, quit];
                 }
 
                 AnsiConsole.MarkupLine("");
@@ -641,9 +651,7 @@ namespace condeco_cli
                     if (!selectedBooking.Equals("Cancel"))
                     {
                         var booking = bookingsLookup[selectedBooking];
-
                         AnsiConsole.Clear();
-                        PrintBookings(config.Bookings, booking.AutogenName, condeco);
                         PromptForBookingDetails(condeco, booking);
                         config.Save();
                     }

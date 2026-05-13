@@ -1,7 +1,8 @@
 {
   "profiles": {
     "condeco-cli": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "--api mobile"
     }
   }
 }

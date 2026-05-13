@@ -24,17 +24,10 @@ namespace condeco_cli.Model
 
         public string GetBookingForFullName(ICondeco condeco)
         {
-            string bookingFor;
-            if (BookFor == null)
-            {
-                bookingFor = condeco.GetFullName();
-            }
-            else
-            {
-                bookingFor = BookFor.FirstName + " " + BookFor.LastName;
-            }
+            if (BookFor == null || string.IsNullOrEmpty(BookFor.UserId))
+                return condeco.GetFullName();
 
-            return bookingFor;
+            return BookFor.FirstName + " " + BookFor.LastName;
         }
     }
 }
