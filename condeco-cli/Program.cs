@@ -100,7 +100,7 @@ namespace condeco_cli
                             config.Account.RefreshToken = refreshedTokens.RefreshToken ?? config.Account.RefreshToken;
                             config.Save();
                             Console.WriteLine("[SSO] Refreshed tokens saved to config.");
-            }
+                        }
                         else if (!loggedIn)
                         {
                             errorMessage = "Token expired and refresh failed. Please re-authenticate interactively.";
@@ -338,15 +338,37 @@ namespace condeco_cli
                 {
                     try
                     {
+                        var beforeCall = DateTime.UtcNow;
                         var currentServerTime = condeco.GetServerDateTimeUTC();
+                        var afterCall = DateTime.UtcNow;
+                        var roundTrip = afterCall - beforeCall;
+                        var clockDelta = afterCall - currentServerTime;
+                        Console.WriteLine($"{DateTime.Now}  Server time: {currentServerTime:O}  Local UTC: {afterCall:O}  API call took: {roundTrip.TotalSeconds:N2}s  Delta (local - server): {clockDelta.TotalSeconds:N2}s");
+
                         var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, 0, 0).AddHours(1);
                         //var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, currentServerTime.Minute, currentServerTime.Second).AddSeconds(10);
 
-                        var durationToWait = nextHour - currentServerTime;
+                        var durationToRollover = nextHour - currentServerTime;
+                        var earliestSleep = durationToRollover - roundTrip;
+                        var latestSleep = durationToRollover;
 
-                        Console.WriteLine($"{DateTime.Now}  Will wait a total of {durationToWait.TotalMinutes:N2} {"minute".Pluralize((int)durationToWait.TotalMinutes)} for the hour to roll over.");
+                        Console.WriteLine($"{DateTime.Now}  Rollover window: earliest in {earliestSleep.TotalSeconds:N2}s, latest in {latestSleep.TotalSeconds:N2}s (uncertainty: {(latestSleep - earliestSleep).TotalSeconds:N2}s)");
 
-                        Thread.Sleep(durationToWait);
+                        var rangeBookingTasks = bookingGroups
+                            .SelectMany(bg => bg)
+                            .Where(bt => bt.Dates.Count > 1)
+                            .ToList();
+
+                        if (earliestSleep > TimeSpan.Zero)
+                            Thread.Sleep(earliestSleep);
+
+                        Console.WriteLine($"{DateTime.Now}  Earliest rollover reached. Firing {rangeBookingTasks.Count:N0} range {"booking".Pluralize(rangeBookingTasks.Count)}.");
+                        foreach (var bt in rangeBookingTasks)
+                            condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor);
+
+                        var remainingSleep = latestSleep - earliestSleep;
+                        if (remainingSleep > TimeSpan.Zero)
+                            Thread.Sleep(remainingSleep);
 
                         Console.WriteLine($"{DateTime.Now}  Hour has rolled over.");
                     }
