@@ -5,6 +5,7 @@ using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.People;
 using libCondeco.Model.Space;
+using libCondeco.Web;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
@@ -20,11 +21,13 @@ namespace condeco_cli
     {
         private readonly BaseOptions options;
         private readonly CondecoCliConfig config;
+        private readonly IHttpClientFactory httpClientFactory;
 
-        public InteractiveSession(BaseOptions options, CondecoCliConfig config)
+        public InteractiveSession(BaseOptions options, CondecoCliConfig config, IHttpClientFactory httpClientFactory)
         {
             this.options = options;
             this.config = config;
+            this.httpClientFactory = httpClientFactory;
         }
 
         void CollectBaseUrl()
@@ -45,11 +48,58 @@ namespace condeco_cli
             } 
         }
 
+        SsoConfig? detectedSsoConfig;
+
         void CollectCreds()
         {
             if (options.API == EnumAPI.web)
             {
                 CollectUsernameAndPassword();
+                return;
+            }
+
+            detectedSsoConfig = null;
+            var diagnosticOutput = new StringWriter();
+            AnsiConsole
+                .Status()
+                .AutoRefresh(true)
+                .Spinner(Spinner.Known.Default)
+                .Start("[yellow]Detecting server authentication type...[/]", ctx =>
+                {
+                    var originalOut = Console.Out;
+                    Console.SetOut(diagnosticOutput);
+                    try
+                    {
+                        var mobile = new CondecoMobile(httpClientFactory, config.Account.BaseUrl);
+                        detectedSsoConfig = mobile.DetectSso();
+                    }
+                    catch (Exception ex)
+                    {
+                        diagnosticOutput.WriteLine($"[SSO] Detection failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        Console.SetOut(originalOut);
+                    }
+                });
+
+            if (detectedSsoConfig != null)
+            {
+                AnsiConsole.MarkupLine("[yellow]This server uses SSO authentication.[/]");
+
+                var ssoStr = "SSO (browser sign-in)";
+                var tokenStr = "Token (paste an existing token)";
+
+                var loginType = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                                                        .Title("Log in using: ")
+                                                        .AddChoices([ssoStr, tokenStr]));
+
+                if (loginType == tokenStr)
+                {
+                    detectedSsoConfig = null;
+                    Collect(ref config.Account.Token, "Please enter token: ");
+                    config.Save();
+                }
             }
             else
             {
@@ -459,21 +509,70 @@ namespace condeco_cli
 
                 var loggedIn = false;
 
-                AnsiConsole
-                    .Status()
-                    .AutoRefresh(true)
-                    .Spinner(Spinner.Known.Default)
-                    .Start("[yellow]Logging in[/]", ctx =>
+                if (detectedSsoConfig != null && condeco is CondecoMobile mobile)
+                {
+                    AnsiConsole.MarkupLine("[yellow]Starting SSO login...[/]");
+
+                    var originalOut = Console.Out;
+                    var ssoDiagnostics = new StringWriter();
+                    Console.SetOut(ssoDiagnostics);
+
+                    bool ssoSuccess;
+                    string ssoError;
+                    SsoTokens? tokens;
+                    try
                     {
-                        if (!string.IsNullOrEmpty(config.Account.Username))
+                        (ssoSuccess, ssoError, tokens) = mobile.SsoLogIn(
+                            detectedSsoConfig,
+                            config.Account.RefreshToken,
+                            () =>
+                            {
+                                Console.SetOut(originalOut);
+                                var code = AnsiConsole.Ask<string>("Paste the authorization code here:");
+                                Console.SetOut(ssoDiagnostics);
+                                return code;
+                            },
+                            display: line => { Console.SetOut(originalOut); AnsiConsole.MarkupLine(Markup.Escape(line)); Console.SetOut(ssoDiagnostics); });
+                    }
+                    finally
+                    {
+                        Console.SetOut(originalOut);
+                    }
+
+                    loggedIn = ssoSuccess;
+
+                    if (loggedIn && tokens != null)
+                    {
+                        config.Account.Token = tokens.AccessToken;
+                        config.Account.RefreshToken = tokens.RefreshToken ?? "";
+                        config.Save();
+                        AnsiConsole.MarkupLine("[grey][[SSO]] Tokens saved to config.[/]");
+                    }
+                    else if (!loggedIn)
+                    {
+                        AnsiConsole.MarkupLine($"[red]SSO login failed: {Markup.Escape(ssoError)}[/]");
+                    }
+
+                    detectedSsoConfig = null;
+                }
+                else
+                {
+                    AnsiConsole
+                        .Status()
+                        .AutoRefresh(true)
+                        .Spinner(Spinner.Known.Default)
+                        .Start("[yellow]Logging in[/]", ctx =>
                         {
-                            (loggedIn, _) = condeco.LogIn(config.Account.Username, config.Account.Password);
-                        }
-                        else if (!string.IsNullOrEmpty(config.Account.Token))
-                        {
-                            (loggedIn, _) = condeco.LogIn(config.Account.Token);
-                        }
-                    });
+                            if (!string.IsNullOrEmpty(config.Account.Username))
+                            {
+                                (loggedIn, _) = condeco.LogIn(config.Account.Username, config.Account.Password);
+                            }
+                            else if (!string.IsNullOrEmpty(config.Account.Token))
+                            {
+                                (loggedIn, _) = condeco.LogIn(config.Account.Token);
+                            }
+                        });
+                }
 
                 if (loggedIn)
                 {

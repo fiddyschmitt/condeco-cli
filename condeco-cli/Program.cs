@@ -47,7 +47,7 @@ namespace condeco_cli
                         Environment.Exit(0);
                     }
 
-                    var interactionSession = new InteractiveSession(opts, config);
+                    var interactionSession = new InteractiveSession(opts, config, httpClientFactory);
                     interactionSession.Run();
                 });
 
@@ -83,6 +83,34 @@ namespace condeco_cli
             else if (!string.IsNullOrEmpty(config.Account.Token))
             {
                 (loggedIn, errorMessage) = condeco.LogIn(config.Account.Token);
+
+                if (!loggedIn && !string.IsNullOrEmpty(config.Account.RefreshToken) && condeco is CondecoMobile mobileRefresh)
+                {
+                    Console.WriteLine("[SSO] Token login failed. Attempting SSO refresh...");
+                    var ssoConfig = mobileRefresh.DetectSso();
+                    if (ssoConfig != null)
+                    {
+                        var (refreshSuccess, refreshError, refreshedTokens) = mobileRefresh.RefreshSsoToken(ssoConfig, config.Account.RefreshToken);
+                        loggedIn = refreshSuccess;
+                        errorMessage = refreshError;
+
+                        if (loggedIn && refreshedTokens != null)
+                        {
+                            config.Account.Token = refreshedTokens.AccessToken;
+                            config.Account.RefreshToken = refreshedTokens.RefreshToken ?? config.Account.RefreshToken;
+                            config.Save();
+                            Console.WriteLine("[SSO] Refreshed tokens saved to config.");
+            }
+                        else if (!loggedIn)
+                        {
+                            errorMessage = "Token expired and refresh failed. Please re-authenticate interactively.";
+                        }
+                    }
+                }
+            }
+            else
+            {
+                errorMessage = "No credentials configured. Please run condeco-cli interactively to log in.";
             }
 
             if (loggedIn)

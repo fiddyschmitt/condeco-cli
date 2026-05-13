@@ -68,6 +68,189 @@ namespace libCondeco
             }
         }
 
+        public SsoConfig? DetectSso()
+        {
+            string? appVersion = null;
+            var url = client.BaseAddress?.Host ?? "";
+
+            try
+            {
+                var systemInfoResponse = client.GetAsync("/api/systeminfo").Result;
+                if (systemInfoResponse.IsSuccessStatusCode)
+                {
+                    var json = systemInfoResponse.Content.ReadAsStringAsync().Result;
+                    var obj = JObject.Parse(json);
+                    appVersion = obj["appVersion"]?.ToString();
+
+                    var ssoConfig = SsoLogin.ParseFromSystemInfo(obj);
+                    if (ssoConfig != null) return ssoConfig;
+                }
+            }
+            catch { }
+
+            if (appVersion == null)
+            {
+                Console.WriteLine("[SSO] No appVersion from systeminfo — cannot decrypt GlobalSettings.");
+                return null;
+            }
+
+            try
+            {
+                var globalSettingsResponse = client.GetAsync("/MobileAPI/DeskBookingService.svc/Configuration/GetGlobalSettings").Result;
+                if (globalSettingsResponse.IsSuccessStatusCode)
+                {
+                    var json = globalSettingsResponse.Content.ReadAsStringAsync().Result;
+                    var ver = appVersion;
+                    return SsoLogin.ParseFromGlobalSettings(json, value => Decrypt(value, url, ver));
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
+        public (bool Success, string ErrorMessage, SsoTokens? Tokens) SsoLogIn(
+            SsoConfig ssoConfig,
+            string? existingRefreshToken,
+            Func<string>? promptForAuthCode,
+            Action<string>? display = null,
+            CancellationToken cancellationToken = default)
+        {
+            var print = display ?? Console.WriteLine;
+
+            Console.WriteLine("[SSO] === Starting SSO Login ===");
+            Console.WriteLine($"[SSO] Config:\n{ssoConfig}");
+
+            if (!string.IsNullOrEmpty(existingRefreshToken))
+            {
+                Console.WriteLine("[SSO] Attempting refresh token login...");
+                try
+                {
+                    var refreshedTokens = SsoLogin.RefreshAccessToken(client, ssoConfig, existingRefreshToken);
+                    Console.WriteLine("[SSO] Refresh token succeeded. Logging in with access token...");
+                    var (success, error) = LogIn(refreshedTokens.AccessToken);
+                    if (success)
+                    {
+                        Console.WriteLine("[SSO] Login with refreshed token successful.");
+                        return (true, "", refreshedTokens);
+                    }
+                    Console.WriteLine($"[SSO] Login with refreshed token failed: {error}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SSO] Refresh token failed: {ex.Message}");
+                }
+            }
+
+            if (SsoLogin.SupportsDeviceCodeFlow(client, ssoConfig))
+            {
+                Console.WriteLine("[SSO] Device code flow is supported. Starting...");
+                try
+                {
+                    var tokens = SsoLogin.DeviceCodeLogin(client, ssoConfig, (verificationUri, userCode) =>
+                    {
+                        print("");
+                        print("To sign in, open the following URL in a browser:");
+                        print($"  {verificationUri}");
+                        print("");
+                        print($"And enter this code: {userCode}");
+                        print("");
+                        print("Waiting for authorization...");
+                    }, cancellationToken);
+
+                    Console.WriteLine("[SSO] Device code flow succeeded. Logging in with access token...");
+                    var (success, error) = LogIn(tokens.AccessToken);
+                    if (success)
+                    {
+                        Console.WriteLine("[SSO] Login with device code token successful.");
+                        return (true, "", tokens);
+                    }
+                    Console.WriteLine($"[SSO] Login with device code token failed: {error}");
+                    return (false, $"SSO token obtained but login failed: {error}", tokens);
+                }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine("[SSO] Device code flow cancelled.");
+                    return (false, "SSO login cancelled.", null);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SSO] Device code flow failed: {ex.Message}");
+                    Console.WriteLine("[SSO] Falling through to manual paste flow...");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[SSO] Device code flow not supported.");
+            }
+
+            Console.WriteLine("[SSO] Starting manual paste flow...");
+            var redirectUri = SsoLogin.OobRedirectUri;
+            var authUrl = SsoLogin.BuildAuthorizationUrl(ssoConfig, redirectUri);
+
+            print("");
+            print("Open this URL in a browser to sign in:");
+            print($"  {authUrl}");
+            print("");
+
+            if (promptForAuthCode == null)
+            {
+                Console.WriteLine("[SSO] No auth code prompt callback provided. Cannot proceed with manual paste flow.");
+                return (false, "SSO requires interactive input but no prompt callback was provided.", null);
+            }
+
+            var code = promptForAuthCode();
+            if (string.IsNullOrEmpty(code))
+            {
+                Console.WriteLine("[SSO] No authorization code provided.");
+                return (false, "No authorization code provided.", null);
+            }
+
+            Console.WriteLine($"[SSO] Authorization code received: {code[..Math.Min(20, code.Length)]}...");
+
+            try
+            {
+                var tokens = SsoLogin.ExchangeCodeForTokens(client, ssoConfig, code, redirectUri);
+                Console.WriteLine("[SSO] Code exchange succeeded. Logging in with access token...");
+                var (success, error) = LogIn(tokens.AccessToken);
+                if (success)
+                {
+                    Console.WriteLine("[SSO] Login with exchanged token successful.");
+                    return (true, "", tokens);
+                }
+                Console.WriteLine($"[SSO] Login with exchanged token failed: {error}");
+                return (false, $"SSO token obtained but login failed: {error}", tokens);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SSO] Code exchange failed: {ex.Message}");
+                return (false, $"SSO code exchange failed: {ex.Message}", null);
+            }
+        }
+
+        public (bool Success, string ErrorMessage, SsoTokens? Tokens) RefreshSsoToken(SsoConfig ssoConfig, string refreshToken)
+        {
+            Console.WriteLine("[SSO] Attempting refresh token...");
+            try
+            {
+                var refreshedTokens = SsoLogin.RefreshAccessToken(client, ssoConfig, refreshToken);
+                Console.WriteLine("[SSO] Refresh succeeded. Logging in with new access token...");
+                var (success, error) = LogIn(refreshedTokens.AccessToken);
+                if (success)
+                {
+                    Console.WriteLine("[SSO] Login with refreshed token successful.");
+                    return (true, "", refreshedTokens);
+                }
+                Console.WriteLine($"[SSO] Login with refreshed token failed: {error}");
+                return (false, error, refreshedTokens);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SSO] Refresh failed: {ex.Message}");
+                return (false, $"Refresh failed: {ex.Message}", null);
+            }
+        }
+
         public (bool Success, string ErrorMessage) LogIn(string username, string password)
         {
             userIdLong = string.Empty;

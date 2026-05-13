@@ -14,5 +14,6 @@ namespace condeco_cli.Model
         public string Password = "";
 
         public string Token = "";
+        public string RefreshToken = "";
     }
 }

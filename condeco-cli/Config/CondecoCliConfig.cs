@@ -41,9 +41,10 @@ namespace condeco_cli.Config
             }
             else if (!string.IsNullOrEmpty(Account.Token))
             {
-                {
-                    ini["Account"]["Token"] = Account.Token;
-                }
+                ini["Account"]["Token"] = Account.Token;
+
+                if (!string.IsNullOrEmpty(Account.RefreshToken))
+                    ini["Account"]["RefreshToken"] = Account.RefreshToken;
             }
 
             var bookingNumber = 1;
@@ -115,6 +116,7 @@ namespace condeco_cli.Config
             else if (!string.IsNullOrEmpty(ini["Account"]["Token"]))
             {
                 Account.Token = ini["Account"]["Token"];
+                Account.RefreshToken = ini["Account"]["RefreshToken"] ?? "";
             }
 
             Bookings = ini
