@@ -81,7 +81,7 @@ namespace condeco_cli.Scheduling
             string days;
             if (dowField == "*")
             {
-                days = "daily";
+                days = "Daily";
             }
             else
             {

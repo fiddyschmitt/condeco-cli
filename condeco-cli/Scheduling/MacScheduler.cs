@@ -114,7 +114,7 @@ namespace condeco_cli.Scheduling
                 }
             }
 
-            var days = weekday >= 0 ? ((DayOfWeek)weekday).ToString()[..3] : "daily";
+            var days = weekday >= 0 ? ((DayOfWeek)weekday).ToString()[..3] : "Daily";
             return new ScheduleInfo { Days = days, Time = new TimeOnly(hour, minute) };
         }
 
@@ -130,7 +130,7 @@ namespace condeco_cli.Scheduling
                 daysList.Add(info.Days);
             }
 
-            var days = daysList.Count == 7 ? "daily" : string.Join(",", daysList.Distinct());
+            var days = daysList.Count == 7 ? "Daily" : string.Join(",", daysList.Distinct());
             return new ScheduleInfo { Days = days, Time = time };
         }
     }

@@ -30,7 +30,7 @@ namespace condeco_cli.Scheduling
             string days;
             if (schedTypeMatch.Success && schedTypeMatch.Groups[1].Value.Trim().Contains("Daily", StringComparison.OrdinalIgnoreCase))
             {
-                days = "daily";
+                days = "Daily";
             }
             else if (daysMatch.Success)
             {

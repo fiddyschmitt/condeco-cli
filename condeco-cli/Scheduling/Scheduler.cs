@@ -31,7 +31,7 @@ namespace condeco_cli.Scheduling
 
             string args;
             if (taskType == "booking")
-                args = $"--autobook --wait-for-rollover 5 --api {apiFlag} --config \"{configPath}\"";
+                args = $"--autobook --wait-for-rollover 30 --api {apiFlag} --config \"{configPath}\"";
             else
                 args = $"--checkin --api {apiFlag} --config \"{configPath}\"";
 
