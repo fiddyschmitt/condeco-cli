@@ -892,7 +892,7 @@ namespace condeco_cli
                                         if (booking.Days.Contains(dayOfWeek.ToString()))
                                         {
                                             dayStr = dayStr.PadRight(longestDayOfWeek + 3);
-                                            dayStr += "✓";  //√
+                                            dayStr += OperatingSystem.IsLinux() ? "√" : "✓";
                                         }
 
                                         if (booking.AutogenName.Equals(highlightBooking)) dayStr = $"[yellow]{dayStr}[/]";
