@@ -794,9 +794,7 @@ namespace condeco_cli
                 {
                     try
                     {
-                        var endDate = condeco.GetBookingWindowEndDate();
-                        Console.WriteLine($"Booking window end date: {endDate:yyyy-MM-dd dddd} (local time: {DateTime.Now}, UTC: {DateTime.UtcNow})");
-                        suggestedDay = endDate.DayOfWeek;
+                        suggestedDay = condeco.GetRolloverDay();
                     }
                     catch
                     {
