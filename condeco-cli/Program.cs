@@ -26,41 +26,41 @@ namespace condeco_cli
             Console.WriteLine($"Current date: {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Console.WriteLine();
 
-            if (args.Length == 0 ||
-                (args.Length == 2 && (args.ToList().Contains("--config") || args.ToList().Contains("--api"))) ||
-                (args.Length == 4 && (args.ToList().Contains("--config") && args.ToList().Contains("--api"))))
-            {
-                Parser.Default.ParseArguments<BaseOptions>(args)
-                .WithParsed(static opts =>
+            Parser.Default.ParseArguments<BaseOptions>(args)
+                .WithParsed(opts =>
                 {
-                    if (!AnsiConsole.Profile.Capabilities.Interactive)
+                    if (opts.WaitForRolloverMinutes != null && !opts.AutoBook)
                     {
-                        AnsiConsole.MarkupLine("[red]Environment does not support interaction.[/]");
-                        return;
+                        Console.WriteLine("--wait-for-rollover can only be used with --autobook.");
+                        Environment.Exit(1);
                     }
 
-                    LoadConfig(opts.Config, true);
-
-                    if (config == null)
+                    if (opts.AutoBook)
+                        RunAutoBook(opts);
+                    else if (opts.CheckIn)
+                        RunCheckIn(opts);
+                    else if (opts.Dump)
+                        RunDump(opts);
+                    else
                     {
-                        AnsiConsole.MarkupLine("Error: config file not loaded.");
-                        Environment.Exit(0);
-                    }
+                        if (!AnsiConsole.Profile.Capabilities.Interactive)
+                        {
+                            AnsiConsole.MarkupLine("[red]Environment does not support interaction.[/]");
+                            return;
+                        }
 
-                    var interactionSession = new InteractiveSession(opts, config, httpClientFactory);
-                    interactionSession.Run();
+                        LoadConfig(opts.Config, true);
+
+                        if (config == null)
+                        {
+                            AnsiConsole.MarkupLine("Error: config file not loaded.");
+                            Environment.Exit(0);
+                        }
+
+                        var interactionSession = new InteractiveSession(opts, config, httpClientFactory);
+                        interactionSession.Run();
+                    }
                 });
-
-            }
-            else
-            {
-                Parser.Default
-                    .ParseArguments<AutoBookOptions, CheckInOptions, DumpOptions>(args)
-                    .WithParsed<AutoBookOptions>(RunAutoBook)
-                    .WithParsed<CheckInOptions>(RunCheckIn)
-                    .WithParsed<DumpOptions>(RunDump)
-                    .WithNotParsed(errors => Console.WriteLine("Invalid command or arguments."));
-            }
         }
 
         static void NonInteractiveLogin(ICondeco condeco)
@@ -126,20 +126,20 @@ namespace condeco_cli
             }
         }
 
-        static void RunAutoBook(AutoBookOptions opts)
+        static void RunAutoBook(BaseOptions opts)
         {
             var waitForRollover = false;
             if (opts.WaitForRolloverMinutes != null)
             {
                 if (opts.WaitForRolloverMinutes.Value < 1)
                 {
-                    Console.WriteLine($"--wait-for-rollover must be between 1 and {AutoBookOptions.MAX_WAIT_DURATION_MINUTES} minutes inclusive.");
+                    Console.WriteLine($"--wait-for-rollover must be between 1 and {BaseOptions.MAX_WAIT_DURATION_MINUTES} minutes inclusive.");
                     Environment.Exit(1);
                 }
 
-                if (opts.WaitForRolloverMinutes.Value > AutoBookOptions.MAX_WAIT_DURATION_MINUTES)
+                if (opts.WaitForRolloverMinutes.Value > BaseOptions.MAX_WAIT_DURATION_MINUTES)
                 {
-                    Console.WriteLine($"--wait-for-rollover must not exceed {AutoBookOptions.MAX_WAIT_DURATION_MINUTES} minutes.");
+                    Console.WriteLine($"--wait-for-rollover must not exceed {BaseOptions.MAX_WAIT_DURATION_MINUTES} minutes.");
                     Environment.Exit(1);
                 }
 
@@ -251,7 +251,7 @@ namespace condeco_cli
                                     }
                                     else
                                     {
-                                        maxDuration = TimeSpan.FromMinutes(AutoBookOptions.MAX_WAIT_DURATION_MINUTES);
+                                        maxDuration = TimeSpan.FromMinutes(BaseOptions.MAX_WAIT_DURATION_MINUTES);
                                     }
 
                                     var ranges = datesToBook
@@ -455,7 +455,7 @@ namespace condeco_cli
             condeco.LogOut();
         }
 
-        static void RunCheckIn(CheckInOptions opts)
+        static void RunCheckIn(BaseOptions opts)
         {
             LoadConfig(opts.Config, false);
             CheckAccountIsPopulated(config);
@@ -528,7 +528,7 @@ namespace condeco_cli
             condeco.LogOut();
         }
 
-        static void RunDump(DumpOptions opts)
+        static void RunDump(BaseOptions opts)
         {
             LoadConfig(opts.Config, false);
             CheckAccountIsPopulated(config);
