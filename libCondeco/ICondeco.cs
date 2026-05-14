@@ -34,6 +34,7 @@ namespace libCondeco
         public List<Colleague> FindColleague(string searchTerm);
 
         //booking related
+        public DayOfWeek GetRolloverDay();
         public DateTime GetBookingWindowStartDate();
         public DateTime GetBookingWindowEndDate();
         public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser);

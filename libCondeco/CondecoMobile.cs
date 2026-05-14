@@ -656,6 +656,17 @@ namespace libCondeco
             return result;
         }
 
+        public DayOfWeek GetRolloverDay()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+            if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
+
+            // WeekStart is ISO-8601: 1=Monday .. 7=Sunday — the first day of the new booking week.
+            // Rollover happens the evening before, so subtract one day.
+            var weekStart = loginInfo.DeskResults.SystemSettings.WeekStart;
+            return (DayOfWeek)((weekStart % 7 + 6) % 7);
+        }
+
         public DateTime GetBookingWindowStartDate()
         {
             return DateTime.Now.Date;
@@ -667,15 +678,22 @@ namespace libCondeco
             if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
 
             var groupSettings = GetGroupSettings(loginInfo.DeskResults.DefaultSettings.DefaultLocation, loginInfo.DeskResults.DefaultSettings.DefaultGroup);
-            var bookingWindowSizeDays = groupSettings.advancePeriodValue;
-            if (groupSettings.advancePeriodUnit == 1)
-            {
-                //I think this means that advancePeriodValue is in weeks
-                bookingWindowSizeDays *= 7;
-            }
 
-            var startOfWeek = DateTime.Now.Date.StartOfWeek(DayOfWeek.Sunday);
-            var result = startOfWeek.AddDays(bookingWindowSizeDays);
+            // WeekStart is the first day of the booking week (ISO-8601: 1=Mon .. 7=Sun)
+            var weekStart = (DayOfWeek)(loginInfo.DeskResults.SystemSettings.WeekStart % 7);
+
+            var periodDays = groupSettings.advancePeriodValue;
+            if (groupSettings.advancePeriodUnit == 1)
+                periodDays *= 7;
+
+            var weekBoundary = DateTime.Now.Date.StartOfWeek(weekStart);
+            var result = weekBoundary.AddDays(periodDays);
+
+            if (groupSettings.includeWeekend)
+                result = result.AddDays(-1);
+            else
+                result = result.AddDays(-3);
+
             return result;
         }
 

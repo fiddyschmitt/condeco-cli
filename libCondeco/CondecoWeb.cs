@@ -860,6 +860,29 @@ namespace libCondeco
             return result;
         }
 
+        DeskSettings? GetFirstDeskSettings()
+        {
+            return AppSettings?
+                        .WorkspaceTypes
+                        .Select(wt => wt.ResourceId)
+                        .Distinct()
+                        .Select(GetGrid)
+                        .Select(grid => grid?.Settings.DeskSettings)
+                        .FirstOrDefault(ds => ds != null);
+        }
+
+        public DayOfWeek GetRolloverDay()
+        {
+            if (!loginSuccessful) throw new Exception($"Not yet logged in.");
+
+            var ds = GetFirstDeskSettings() ?? throw new Exception("No desk settings available.");
+            // EndDate is always the last day of the furthest bookable week and jumps weekly on rollover.
+            // If weekends excluded, EndDate is a Friday → rollover is Sunday (EndDate + 2).
+            // If weekends included, EndDate is a Saturday → rollover is Sunday (EndDate + 1).
+            int daysToAdd = ds.IncludeWeekends ? 1 : 2;
+            return ds.EndDate.AddDays(daysToAdd).DayOfWeek;
+        }
+
         public DateTime GetBookingWindowStartDate()
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
