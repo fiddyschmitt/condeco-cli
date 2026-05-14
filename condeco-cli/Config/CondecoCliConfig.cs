@@ -13,11 +13,11 @@ namespace condeco_cli.Config
 {
     public class CondecoCliConfig
     {
-        private readonly string configFilename;
+        public readonly string ConfigFilename;
 
-        public CondecoCliConfig(string configFilename)
+        public CondecoCliConfig(string ConfigFilename)
         {
-            this.configFilename = configFilename;
+            this.ConfigFilename = ConfigFilename;
             Reload();
         }
 
@@ -90,16 +90,16 @@ namespace condeco_cli.Config
                 });
 
             var iniStr = ini.ToString();
-            File.WriteAllText(configFilename, iniStr);
+            File.WriteAllText(ConfigFilename, iniStr);
         }
 
         public void Reload()
         {
             var ini = new Ini();
 
-            if (File.Exists(configFilename))
+            if (File.Exists(ConfigFilename))
             {
-                ini.Parse(File.ReadAllText(configFilename));
+                ini.Parse(File.ReadAllText(ConfigFilename));
             }
 
             Account = new Account()

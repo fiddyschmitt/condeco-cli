@@ -1,6 +1,7 @@
 ﻿using condeco_cli.CLI;
 using condeco_cli.Config;
 using condeco_cli.Model;
+using condeco_cli.Scheduling;
 using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.People;
@@ -604,6 +605,8 @@ namespace condeco_cli
 
             if (condeco == null) return;
 
+            var configSlug = Scheduler.GetConfigSlug(config.ConfigFilename);
+
             while (true)
             {
                 AnsiConsole.Clear();
@@ -615,19 +618,32 @@ namespace condeco_cli
                 var deleteBooking = "Delete a booking";
                 var quit = "Quit";
 
-                string[] actionChoices;
-                if (config.Bookings.Count == 0)
+                var autobookSchedule = Scheduler.GetSchedule("booking", configSlug);
+                var checkinSchedule = Scheduler.GetSchedule("checkin", configSlug);
+
+                var scheduledBookingLabel = autobookSchedule != null
+                    ? $"Scheduled booking ({autobookSchedule.Summary})"
+                    : "Schedule booking (not configured)";
+
+                var scheduledCheckinLabel = checkinSchedule != null
+                    ? $"Scheduled check in ({checkinSchedule.Summary})"
+                    : "Schedule check in (not configured)";
+
+                var bookingChoices = new List<string> { addBooking };
+                if (config.Bookings.Count > 0)
                 {
-                    actionChoices = [addBooking, quit];
-                }
-                else
-                {
-                    actionChoices = [addBooking, editBooking, deleteBooking, quit];
+                    bookingChoices.Add(editBooking);
+                    bookingChoices.Add(deleteBooking);
                 }
 
                 AnsiConsole.MarkupLine("");
-                var selectedAction = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                                                                .AddChoices(actionChoices));
+                var prompt = new SelectionPrompt<string>()
+                    .Mode(SelectionMode.Leaf)
+                    .AddChoiceGroup("Bookings", bookingChoices)
+                    .AddChoiceGroup("Scheduling", [scheduledBookingLabel, scheduledCheckinLabel])
+                    .AddChoices([quit]);
+
+                var selectedAction = AnsiConsole.Prompt(prompt);
 
                 if (selectedAction == addBooking)
                 {
@@ -651,7 +667,6 @@ namespace condeco_cli
                     if (!selectedBooking.Equals("Cancel"))
                     {
                         var booking = bookingsLookup[selectedBooking];
-                        AnsiConsole.Clear();
                         PromptForBookingDetails(condeco, booking);
                         config.Save();
                     }
@@ -677,12 +692,162 @@ namespace condeco_cli
                     }
                 }
 
+                if (selectedAction == scheduledBookingLabel)
+                {
+                    HandleScheduleMenu("booking", configSlug, autobookSchedule, condeco);
+                }
+
+                if (selectedAction == scheduledCheckinLabel)
+                {
+                    HandleScheduleMenu("checkin", configSlug, checkinSchedule, condeco);
+                }
+
                 if (selectedAction == quit)
                 {
                     condeco.LogOut();
                     Environment.Exit(0);
                 }
             }
+        }
+
+        void HandleScheduleMenu(string taskType, string configSlug, ScheduleInfo? existing, ICondeco condeco)
+        {
+            var friendlyName = taskType == "booking" ? "booking" : "checkin";
+
+            if (existing != null)
+            {
+                AnsiConsole.MarkupLine($"[yellow]Scheduled {friendlyName}: {existing.Summary}[/]");
+                AnsiConsole.MarkupLine("");
+
+                var editStr = "Edit schedule";
+                var deleteStr = "Delete schedule";
+                var cancelStr = "Cancel";
+
+                var action = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                    .AddChoices([editStr, deleteStr, cancelStr]));
+
+                if (action == editStr)
+                {
+                    try
+                    {
+                        var (days, time) = PromptForSchedule(taskType, condeco, existing);
+                        var exePath = Environment.ProcessPath ?? "condeco-cli";
+                        var configPath = Path.GetFullPath(config.ConfigFilename);
+                        Scheduler.CreateOrUpdateSchedule(taskType, configSlug, days, time, exePath, configPath, options.API.ToString());
+                        AnsiConsole.MarkupLine($"[lime]Schedule updated.[/]");
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Failed to update schedule: {Markup.Escape(ex.Message)}[/]");
+                    }
+                    WaitForKeypress();
+                }
+                else if (action == deleteStr)
+                {
+                    var confirm = AnsiConsole.Confirm($"Delete the scheduled {friendlyName}?", false);
+                    if (confirm)
+                    {
+                        try
+                        {
+                            Scheduler.DeleteSchedule(taskType, configSlug);
+                            AnsiConsole.MarkupLine($"[lime]Schedule deleted.[/]");
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to delete schedule: {Markup.Escape(ex.Message)}[/]");
+                        }
+                        WaitForKeypress();
+                    }
+                }
+            }
+            else
+            {
+                try
+                {
+                    var (days, time) = PromptForSchedule(taskType, condeco, null);
+                    var exePath = Environment.ProcessPath ?? "condeco-cli";
+                    var configPath = Path.GetFullPath(config.ConfigFilename);
+                    Scheduler.CreateOrUpdateSchedule(taskType, configSlug, days, time, exePath, configPath, options.API.ToString());
+                    AnsiConsole.MarkupLine($"[lime]Schedule created.[/]");
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]Failed to create schedule: {Markup.Escape(ex.Message)}[/]");
+                }
+                WaitForKeypress();
+            }
+        }
+
+        (DayOfWeek[]? Days, TimeOnly Time) PromptForSchedule(string taskType, ICondeco condeco, ScheduleInfo? existing)
+        {
+            DayOfWeek[]? days;
+            TimeOnly defaultTime;
+
+            if (taskType == "booking")
+            {
+                DayOfWeek suggestedDay;
+                if (existing != null)
+                {
+                    suggestedDay = ParseFirstDay(existing.Days);
+                }
+                else
+                {
+                    try
+                    {
+                        var endDate = condeco.GetBookingWindowEndDate();
+                        Console.WriteLine($"Booking window end date: {endDate:yyyy-MM-dd dddd} (local time: {DateTime.Now}, UTC: {DateTime.UtcNow})");
+                        suggestedDay = endDate.DayOfWeek;
+                    }
+                    catch
+                    {
+                        suggestedDay = DayOfWeek.Sunday;
+                    }
+                }
+
+                defaultTime = existing?.Time ?? new TimeOnly(23, 58);
+
+                var daysOfWeek = Enum.GetValues(typeof(DayOfWeek))
+                    .Cast<DayOfWeek>()
+                    .OrderBy(d => (d - DayOfWeek.Monday + 7) % 7)
+                    .Select(d => d.ToString())
+                    .ToList();
+
+                var dayPrompt = new SelectionPrompt<string>()
+                    .Title("Run booking on which day?");
+
+                var currentDayStr = suggestedDay.ToString();
+                var choices = daysOfWeek.ToList();
+                if (choices.Remove(currentDayStr))
+                    choices.Insert(0, currentDayStr + " (suggested)");
+                dayPrompt.AddChoices(choices);
+
+                var selectedDay = AnsiConsole.Prompt(dayPrompt);
+                if (selectedDay.EndsWith(" (suggested)"))
+                    selectedDay = selectedDay[..^" (suggested)".Length];
+
+                days = [Enum.Parse<DayOfWeek>(selectedDay)];
+            }
+            else
+            {
+                days = null; // daily
+                defaultTime = existing?.Time ?? new TimeOnly(8, 0);
+            }
+
+            var timeStr = AnsiConsole.Ask("Run at what time? (HH:mm)", defaultTime.ToString("HH:mm"));
+            var time = TimeOnly.Parse(timeStr);
+
+            return (days, time);
+        }
+
+        static DayOfWeek ParseFirstDay(string daysStr)
+        {
+            var token = daysStr.Split(',')[0].Trim();
+            foreach (DayOfWeek d in Enum.GetValues(typeof(DayOfWeek)))
+            {
+                if (d.ToString().StartsWith(token, StringComparison.OrdinalIgnoreCase))
+                    return d;
+            }
+            return DayOfWeek.Sunday;
         }
 
         private static void PrintBookings(List<Booking> bookings, string? highlightBooking, ICondeco condeco)
@@ -742,6 +907,12 @@ namespace condeco_cli
                 });
 
             AnsiConsole.Write(table);
+        }
+
+        static void WaitForKeypress()
+        {
+            AnsiConsole.MarkupLine("[grey]Press any key to continue...[/]");
+            Console.ReadKey(true);
         }
     }
 }
