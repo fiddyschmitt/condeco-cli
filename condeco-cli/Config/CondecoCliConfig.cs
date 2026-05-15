@@ -151,8 +151,10 @@ namespace condeco_cli.Config
                                                 .Select(pair =>
                                                 {
                                                     var tokens = pair.Split(" - ", StringSplitOptions.None);
-                                                    var fromDate = DateOnly.Parse(tokens[0]);
-                                                    var toDate = DateOnly.Parse(tokens[1]);
+                                                    if (tokens.Length < 2)
+                                                        throw new FormatException($"Invalid Exclude_Dates entry: '{pair}'. Expected format: 'yyyy-MM-dd - yyyy-MM-dd'.");
+                                                    var fromDate = DateOnly.Parse(tokens[0].Trim());
+                                                    var toDate = DateOnly.Parse(tokens[1].Trim());
                                                     return (fromDate, toDate);
                                                 })
                                                 .ToList();

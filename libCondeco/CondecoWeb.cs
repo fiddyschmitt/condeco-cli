@@ -860,7 +860,7 @@ namespace libCondeco
             return result;
         }
 
-        DeskSettings? GetFirstDeskSettings()
+        List<DeskSettings> FetchAllDeskSettings()
         {
             return AppSettings?
                         .WorkspaceTypes
@@ -868,17 +868,18 @@ namespace libCondeco
                         .Distinct()
                         .Select(GetGrid)
                         .Select(grid => grid?.Settings.DeskSettings)
-                        .FirstOrDefault(ds => ds != null);
+                        .Where(ds => ds != null)
+                        .Cast<DeskSettings>()
+                        .ToList()
+                   ?? [];
         }
 
         public DayOfWeek GetRolloverDay()
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var ds = GetFirstDeskSettings() ?? throw new Exception("No desk settings available.");
-            // EndDate is always the last day of the furthest bookable week and jumps weekly on rollover.
-            // If weekends excluded, EndDate is a Friday → rollover is Sunday (EndDate + 2).
-            // If weekends included, EndDate is a Saturday → rollover is Sunday (EndDate + 1).
+            var ds = FetchAllDeskSettings().FirstOrDefault()
+                     ?? throw new Exception("No desk settings available.");
             int daysToAdd = ds.IncludeWeekends ? 1 : 2;
             return ds.EndDate.AddDays(daysToAdd).DayOfWeek;
         }
@@ -887,34 +888,22 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var result = AppSettings?
-                            .WorkspaceTypes
-                            .Select(wt => wt.ResourceId)
-                            .Distinct()
-                            .Select(GetGrid)
-                            .Select(grid => grid?.Settings.DeskSettings.StartDate ?? DateTime.Now.Date)
-                            .Where(date => date > DateTime.MinValue)
-                            .OrderBy(date => date)
-                            .FirstOrDefault() ?? DateTime.Now.Date;
-
-            return result;
+            return FetchAllDeskSettings()
+                        .Select(ds => ds.StartDate)
+                        .Where(date => date > DateTime.MinValue)
+                        .OrderBy(date => date)
+                        .FirstOrDefault(DateTime.Now.Date);
         }
 
         public DateTime GetBookingWindowEndDate()
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            var result = AppSettings?
-                            .WorkspaceTypes
-                            .Select(wt => wt.ResourceId)
-                            .Distinct()
-                            .Select(GetGrid)
-                            .Select(grid => grid?.Settings.DeskSettings.EndDate ?? DateTime.Now.Date)
-                            .Where(date => date > DateTime.MinValue)
-                            .OrderByDescending(date => date)
-                            .FirstOrDefault() ?? DateTime.Now.Date;
-
-            return result;
+            return FetchAllDeskSettings()
+                        .Select(ds => ds.EndDate)
+                        .Where(date => date > DateTime.MinValue)
+                        .OrderByDescending(date => date)
+                        .FirstOrDefault(DateTime.Now.Date);
         }
         public void LogOut()
         {

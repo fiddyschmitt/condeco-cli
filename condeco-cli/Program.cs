@@ -152,7 +152,7 @@ namespace condeco_cli
             if (config == null)
             {
                 AnsiConsole.MarkupLine("Error: config file not loaded.");
-                Environment.Exit(0);
+                Environment.Exit(1);
             }
 
             var condeco = BuildCondecoInterface(opts, config);
@@ -463,7 +463,7 @@ namespace condeco_cli
             if (config == null)
             {
                 AnsiConsole.MarkupLine("Error: config file not loaded.");
-                Environment.Exit(0);
+                Environment.Exit(1);
             }
 
             var condeco = BuildCondecoInterface(opts, config);
@@ -536,7 +536,7 @@ namespace condeco_cli
             if (config == null)
             {
                 AnsiConsole.MarkupLine("Error: config file not loaded.");
-                Environment.Exit(0);
+                Environment.Exit(1);
             }
 
             var condecoWeb = new CondecoWeb(httpClientFactory, config.Account.BaseUrl);

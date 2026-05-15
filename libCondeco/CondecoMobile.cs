@@ -733,7 +733,7 @@ namespace libCondeco
                             .Select(date => $"{date:dd/MM/yyyy}|3")
                             .ToString(",");
 
-            var url = $" /MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={dateStr}";
+            var url = $"/MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={dateStr}";
 
             var result = client.GetAsync(url);
             return result;
