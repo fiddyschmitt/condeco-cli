@@ -63,7 +63,7 @@ namespace condeco_cli.Scheduling
 
             var programArgs = new XElement("array",
                 new XElement("string", exePath),
-                args.Split(' ').Select(a => new XElement("string", a)));
+                SplitArgs(args).Select(a => new XElement("string", a)));
 
             var plist = new XDocument(
                 new XDeclaration("1.0", "UTF-8", null),
@@ -94,6 +94,25 @@ namespace condeco_cli.Scheduling
 
             RunProcess("launchctl", $"unload \"{path}\"");
             File.Delete(path);
+        }
+
+        static List<string> SplitArgs(string input)
+        {
+            var result = new List<string>();
+            var current = new System.Text.StringBuilder();
+            bool inQuotes = false;
+            foreach (var c in input)
+            {
+                if (c == '"') { inQuotes = !inQuotes; continue; }
+                if (c == ' ' && !inQuotes)
+                {
+                    if (current.Length > 0) { result.Add(current.ToString()); current.Clear(); }
+                    continue;
+                }
+                current.Append(c);
+            }
+            if (current.Length > 0) result.Add(current.ToString());
+            return result;
         }
 
         static ScheduleInfo ParseCalendarDict(XElement dict)

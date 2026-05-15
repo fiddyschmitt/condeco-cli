@@ -24,6 +24,10 @@ namespace condeco_cli.Scheduling
         {
             Delete(taskType, configSlug);
 
+            var shFile = Path.ChangeExtension(logFile, ".sh");
+            File.WriteAllText(shFile, $"#!/bin/sh\n\"{exePath}\" {args} >> \"{logFile}\" 2>&1\n");
+            RunProcess("chmod", $"+x \"{shFile}\"");
+
             var (exitCode, existing) = RunProcess("crontab", "-l");
             var crontab = exitCode == 0 ? existing.TrimEnd() : "";
 
@@ -31,7 +35,7 @@ namespace condeco_cli.Scheduling
             var dowField = IsDaily(days)
                 ? "*"
                 : string.Join(",", days!.Select(d => (int)d));
-            var cronLine = $"{time.Minute} {time.Hour} * * {dowField} {exePath} {args} >> \"{logFile}\" 2>&1";
+            var cronLine = $"{time.Minute} {time.Hour} * * {dowField} \"{shFile}\"";
 
             if (!string.IsNullOrEmpty(crontab))
                 crontab += "\n";
@@ -67,6 +71,11 @@ namespace condeco_cli.Scheduling
             File.WriteAllText(tempFile, string.Join("\n", newLines));
             RunProcess("crontab", tempFile);
             File.Delete(tempFile);
+
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
+            var shFile = Path.Combine(exeDir, "schedules", configSlug, $"{taskType}.sh");
+            if (File.Exists(shFile))
+                File.Delete(shFile);
         }
 
         static ScheduleInfo? ParseCronLine(string cronLine)
