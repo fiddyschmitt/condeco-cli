@@ -376,7 +376,10 @@ namespace condeco_cli
 
                         Console.WriteLine($"{DateTime.Now}  Earliest rollover reached. Firing {rangeBookingTasks.Count:N0} range {"booking".Pluralize(rangeBookingTasks.Count)}.");
                         foreach (var bt in rangeBookingTasks)
+                        {
+                            Console.WriteLine($"{DateTime.Now}  [{bt}]  Sending range booking request");
                             condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor);
+                        }
 
                         var remainingSleep = latestSleep - earliestSleep;
                         if (remainingSleep > TimeSpan.Zero)
