@@ -63,7 +63,7 @@ namespace condeco_cli.Scheduling
                 schedArgs = $"/sc weekly /d {dayStr} /st {timeStr}";
             }
 
-            var (exitCode, output) = RunProcess("schtasks", $"/create /tn \"{tn}\" /tr \"\"{batFile}\"\" {schedArgs} /f");
+            var (exitCode, output) = RunProcess("schtasks", $"/create /tn \"{tn}\" /tr \"\\\"{batFile}\\\"\" {schedArgs} /f");
             if (exitCode != 0)
                 throw new Exception($"schtasks /create failed (exit {exitCode}): {output}");
 
