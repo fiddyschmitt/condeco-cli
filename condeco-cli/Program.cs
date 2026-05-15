@@ -128,6 +128,8 @@ namespace condeco_cli
 
         static void RunAutoBook(BaseOptions opts)
         {
+            var testingRollover = false;
+
             var waitForRollover = false;
             if (opts.WaitForRolloverMinutes != null)
             {
@@ -172,6 +174,12 @@ namespace condeco_cli
                 var bookingWindowSize = bookUntil - startBookingFrom;
                 startBookingFrom = bookUntil.AddDays(1);
                 bookUntil = startBookingFrom.Add(bookingWindowSize);
+            }
+
+            if (testingRollover)
+            {
+                startBookingFrom = condeco.GetBookingWindowStartDate();
+                bookUntil = condeco.GetBookingWindowEndDate();
             }
 
             //prepare the booking tasks
@@ -346,7 +354,11 @@ namespace condeco_cli
                         Console.WriteLine($"{DateTime.Now}  Server time: {currentServerTime:O}  Local UTC: {afterCall:O}  API call took: {roundTrip.TotalSeconds:N2}s  Delta (local - server): {clockDelta.TotalSeconds:N2}s");
 
                         var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, 0, 0).AddHours(1);
-                        //var nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, currentServerTime.Minute, currentServerTime.Second).AddSeconds(10);
+
+                        if (testingRollover)
+                        {
+                            nextHour = new DateTime(currentServerTime.Year, currentServerTime.Month, currentServerTime.Day, currentServerTime.Hour, currentServerTime.Minute, currentServerTime.Second).AddSeconds(15);
+                        }
 
                         var durationToRollover = nextHour - currentServerTime;
                         var earliestSleep = durationToRollover - roundTrip;
