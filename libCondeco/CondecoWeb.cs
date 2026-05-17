@@ -867,7 +867,7 @@ namespace libCondeco
                         .Select(wt => wt.ResourceId)
                         .Distinct()
                         .Select(GetGrid)
-                        .Select(grid => grid?.Settings.DeskSettings)
+                        .Select(grid => grid?.Settings?.DeskSettings)
                         .Where(ds => ds != null)
                         .Cast<DeskSettings>()
                         .ToList()
@@ -888,7 +888,10 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            return FetchAllDeskSettings()
+            var settings = FetchAllDeskSettings();
+            if (settings.Count == 0) throw new Exception("No desk settings available.");
+
+            return settings
                         .Select(ds => ds.StartDate)
                         .Where(date => date > DateTime.MinValue)
                         .OrderBy(date => date)
@@ -899,7 +902,10 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
-            return FetchAllDeskSettings()
+            var settings = FetchAllDeskSettings();
+            if (settings.Count == 0) throw new Exception("No desk settings available.");
+
+            return settings
                         .Select(ds => ds.EndDate)
                         .Where(date => date > DateTime.MinValue)
                         .OrderByDescending(date => date)
