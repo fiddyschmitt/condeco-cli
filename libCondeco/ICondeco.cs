@@ -37,6 +37,7 @@ namespace libCondeco
         public DayOfWeek GetRolloverDay();
         public DateTime GetBookingWindowStartDate();
         public DateTime GetBookingWindowEndDate();
+        public (DateTime StartDate, DateTime EndDate) GetBookingWindow();
         public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser);
 
         public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> date, BookFor? bookForUser);

@@ -697,6 +697,13 @@ namespace libCondeco
             return result;
         }
 
+        public (DateTime StartDate, DateTime EndDate) GetBookingWindow()
+        {
+            var startDate = GetBookingWindowStartDate();
+            var endDate = GetBookingWindowEndDate();
+            return (startDate, endDate);
+        }
+
         public GroupSettingsWithRestrictions GetGroupSettings(int locationId, int groupId)
         {
             var getResponse = client.GetAsync($"/MobileAPI/DeskBookingService.svc/groupSettingsWithRestrictions?accessToken={userIdLong}&bookingForUserId=-1&locationId={locationId}&groupIds={groupId}").Result;

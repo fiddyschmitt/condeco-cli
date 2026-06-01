@@ -307,8 +307,9 @@ namespace condeco_cli
 
                             //Console.WriteLine($"{DateTime.Now}  Checking for rollover - attempt {++pollCount:N0}");
 
-                            var bookingWindowStartDate = condeco.GetBookingWindowStartDate();
-                            var bookingWindowEndDate = condeco.GetBookingWindowEndDate();
+                            var bookingWindow = condeco.GetBookingWindow();
+                            var bookingWindowStartDate = bookingWindow.StartDate;
+                            var bookingWindowEndDate = bookingWindow.EndDate;
 
                             if (originalEndDate != bookingWindowEndDate)
                             {
