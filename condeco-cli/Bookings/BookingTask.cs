@@ -142,6 +142,14 @@ namespace condeco_cli.Bookings
                     catch (Exception ex)
                     {
                         Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Error while checking booking: {ex.Message}");
+
+                        if (ex.Message.Contains("401"))
+                        {
+                            Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Session expired. Stopping confirmation checks.");
+                            Result.AttemptsFinished = DateTime.Now;
+                            Result.Status = BookingTaskStatus.BookingTimedOut;
+                            break;
+                        }
                     }
 
                     Thread.Sleep(10_000);

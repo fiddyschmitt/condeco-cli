@@ -335,7 +335,13 @@ namespace condeco_cli
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"{DateTime.Now}  Error while waiting for new booking window details: {ex.Message}.");
+                            Console.WriteLine($"{DateTime.Now}  Error while waiting for new booking window details: {ex}.");
+
+                            if (ex.Message.Contains("401"))
+                            {
+                                Console.WriteLine($"{DateTime.Now}  Session expired. Stopping window detection.");
+                                break;
+                            }
                         }
 
                         Thread.Sleep(1000);
