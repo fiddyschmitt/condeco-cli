@@ -27,6 +27,9 @@ namespace condeco_cli.CLI
         [Option("wait-for-rollover", Required = false, HelpText = "(--autobook only) Wait for the new booking window to be available. Specify the number of minutes to wait for. Max 30 minutes.")]
         public int? WaitForRolloverMinutes { get; set; } = null;
 
+        [Option("verbose", Required = false, HelpText = "Log HTTP requests and responses to console.")]
+        public bool Verbose { get; set; }
+
         public const int MAX_WAIT_DURATION_MINUTES = 30;
     }
 

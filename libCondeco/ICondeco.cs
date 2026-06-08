@@ -40,7 +40,7 @@ namespace libCondeco
         public (DateTime StartDate, DateTime EndDate) GetBookingWindow();
         public Task<HttpResponseMessage> SendBookingRequest(Room room, DateOnly date, BookFor? bookForUser);
 
-        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> date, BookFor? bookForUser);
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> date, BookFor? bookForUser, string? tag = null);
         public (bool Success, BookingResponse BookingResponse) BookRoom(Room room, DateOnly date, BookFor? bookForUser);
         public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor);
         public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null);

@@ -18,7 +18,7 @@ namespace condeco_cli
         const string PROGRAM_VERSION = "1.7.0";
 
         //FPS 15/11/2025: The condeco API can be called at most 50 times per second, otherwise it returns "API calls quota exceeded! maximum admitted 50 per Second."
-        private static readonly IHttpClientFactory httpClientFactory = new RateLimitedHttpClientFactory();
+        private static IHttpClientFactory httpClientFactory = null!;
 
         static void Main(string[] args)
         {
@@ -29,6 +29,8 @@ namespace condeco_cli
             Parser.Default.ParseArguments<BaseOptions>(args)
                 .WithParsed(opts =>
                 {
+                    httpClientFactory = new RateLimitedHttpClientFactory(opts.Verbose);
+
                     if (opts.WaitForRolloverMinutes != null && !opts.AutoBook)
                     {
                         Console.WriteLine("--wait-for-rollover can only be used with --autobook.");
@@ -385,7 +387,7 @@ namespace condeco_cli
                         foreach (var bt in rangeBookingTasks)
                         {
                             Console.WriteLine($"{DateTime.Now}  [{bt}]  Sending range booking request");
-                            condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor);
+                            condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor, tag: "speculative");
                         }
 
                         var remainingSleep = latestSleep - earliestSleep;

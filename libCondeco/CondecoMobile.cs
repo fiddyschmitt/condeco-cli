@@ -720,7 +720,7 @@ namespace libCondeco
             return result;
         }
 
-        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
             if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
@@ -742,7 +742,13 @@ namespace libCondeco
 
             var url = $"/MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={dateStr}";
 
-            var result = client.GetAsync(url);
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (tag != null)
+            {
+                request.Headers.Add("X-Booking-Tag", tag);
+            }
+
+            var result = client.SendAsync(request);
             return result;
         }
 

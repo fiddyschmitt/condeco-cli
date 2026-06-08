@@ -10,6 +10,7 @@ using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
 using System.Web;
 
 namespace libCondeco
@@ -19,6 +20,15 @@ namespace libCondeco
         readonly HttpClientHandler clientHandler;
         readonly HttpClient client;
         bool loginSuccessful = false;
+
+        //GetGridSettings returns 403 if called too frequently. This limiter is to prevent that.
+        readonly FixedWindowRateLimiter gridSettingsLimiter = new(new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 1,
+            Window = TimeSpan.FromSeconds(1),
+            QueueLimit = int.MaxValue,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+        });
 
         public string BaseUrl { get; }
 
@@ -150,7 +160,7 @@ namespace libCondeco
             return result;
         }
 
-        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
@@ -186,6 +196,11 @@ namespace libCondeco
             {
                 Content = new StringContent(postStr, Encoding.UTF8, "application/json")
             };
+
+            if (tag != null)
+            {
+                post.Headers.Add("X-Booking-Tag", tag);
+            }
 
             var result = client.SendAsync(post);
             return result;
@@ -376,6 +391,8 @@ namespace libCondeco
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
+            gridSettingsLimiter.AcquireAsync().AsTask().Wait();
+
             var postContent = new StringContent($@"{{UserId: {userId}, UserLongId: ""{userIdLong}"", ResourceType: {resourceTypeId}}}", Encoding.UTF8, "application/json");
 
             var postResponse = client.PostAsync("/webapi/BookingGrid/GetGridSettings", postContent).Result;
@@ -386,6 +403,13 @@ namespace libCondeco
             }
 
             var postResponseStr = postResponse.Content.ReadAsStringAsync().Result;
+
+            if (Regex.IsMatch(postResponseStr, @"""ResponseCode""\s*:\s*403"))
+            {
+                Console.WriteLine($"{DateTime.Now}  GetGridSettings returned ResponseCode 403 (ResourceType {resourceTypeId}).");
+                return null;
+            }
+
             postResponseStr = JToken.Parse(postResponseStr).ToString();
 
             var result = GridResponse.FromServerResponse(postResponseStr);

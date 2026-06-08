@@ -5,9 +5,12 @@ namespace libCondeco.Web
     public class RateLimitedHttpClientFactory : IHttpClientFactory
     {
         private readonly FixedWindowRateLimiter limiter;
+        private readonly bool verbose;
 
-        public RateLimitedHttpClientFactory()
+        public RateLimitedHttpClientFactory(bool verbose = false)
         {
+            this.verbose = verbose;
+
             limiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 50,
@@ -19,7 +22,11 @@ namespace libCondeco.Web
 
         public HttpClient CreateClient(HttpMessageHandler clientHandler)
         {
-            var handler = new RateLimitedHandler(limiter, clientHandler);
+            HttpMessageHandler innerHandler = verbose
+                ? new LoggingHandler(clientHandler)
+                : clientHandler;
+
+            var handler = new RateLimitedHandler(limiter, innerHandler);
 
             var result = new HttpClient(handler);
             return result;
