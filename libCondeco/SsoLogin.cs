@@ -31,8 +31,7 @@ namespace libCondeco
     {
         public static SsoConfig? ParseFromSystemInfo(JObject systemInfo)
         {
-            var authInfo = systemInfo["authInfo"] as JObject;
-            if (authInfo == null)
+            if (systemInfo["authInfo"] is not JObject authInfo)
             {
                 Console.WriteLine("[SSO] systeminfo has no authInfo object.");
                 return null;
@@ -148,9 +147,8 @@ namespace libCondeco
 
                 var responseStr = response.Content.ReadAsStringAsync().Result;
                 var discovery = JObject.Parse(responseStr);
-                var grantTypes = discovery["grant_types_supported"] as JArray;
 
-                if (grantTypes == null)
+                if (discovery["grant_types_supported"] is not JArray grantTypes)
                 {
                     Console.WriteLine("[SSO] No grant_types_supported in discovery. Device code flow not supported.");
                     return false;

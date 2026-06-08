@@ -210,7 +210,7 @@ namespace libCondeco
         {
             var httpRequest = SendBookingRequest(room, date, bookForUser);
 
-            string? bookingResponseStr = null;
+            string? bookingResponseStr;
             try
             {
                 var bookingResponse = httpRequest.Result;

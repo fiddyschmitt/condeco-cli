@@ -290,7 +290,7 @@ namespace condeco_cli
 
 
             var daysOfWeek = Enum
-                                .GetValues(typeof(DayOfWeek))
+                                .GetValues<DayOfWeek>()
                                 .Cast<DayOfWeek>()
                                 .OrderBy(d => (d - DayOfWeek.Monday + 7) % 7)
                                 .Select(day => day.ToString())
@@ -301,8 +301,7 @@ namespace condeco_cli
                                 .InstructionsText("[grey](Press <space> to selected a day, <enter> to accept)[/]")
                                 .AddChoices(daysOfWeek);
 
-            if (edit != null)
-                edit.Days.ForEach(day => daysPrompt.Select(day));
+            edit?.Days.ForEach(day => daysPrompt.Select(day));
 
             var selectedDays = AnsiConsole.Prompt(daysPrompt).ToList();
 
@@ -778,7 +777,7 @@ namespace condeco_cli
             }
         }
 
-        (DayOfWeek[]? Days, TimeOnly Time) PromptForSchedule(string taskType, ICondeco condeco, ScheduleInfo? existing)
+        static (DayOfWeek[]? Days, TimeOnly Time) PromptForSchedule(string taskType, ICondeco condeco, ScheduleInfo? existing)
         {
             DayOfWeek[]? days;
             TimeOnly defaultTime;
@@ -804,7 +803,7 @@ namespace condeco_cli
 
                 defaultTime = existing?.Time ?? new TimeOnly(23, 58);
 
-                var daysOfWeek = Enum.GetValues(typeof(DayOfWeek))
+                var daysOfWeek = Enum.GetValues<DayOfWeek>()
                     .Cast<DayOfWeek>()
                     .OrderBy(d => (d - DayOfWeek.Monday + 7) % 7)
                     .Select(d => d.ToString())
@@ -840,7 +839,7 @@ namespace condeco_cli
         static DayOfWeek ParseFirstDay(string daysStr)
         {
             var token = daysStr.Split(',')[0].Trim();
-            foreach (DayOfWeek d in Enum.GetValues(typeof(DayOfWeek)))
+            foreach (DayOfWeek d in Enum.GetValues<DayOfWeek>())
             {
                 if (d.ToString().StartsWith(token, StringComparison.OrdinalIgnoreCase))
                     return d;
@@ -874,7 +873,7 @@ namespace condeco_cli
                                 .AddRow(bookings.Select(_ => "").ToArray());
 
             var daysOfWeek = Enum
-                                .GetValues(typeof(DayOfWeek))
+                                .GetValues<DayOfWeek>()
                                 .Cast<DayOfWeek>()
                                 .OrderBy(d => (d - DayOfWeek.Monday + 7) % 7)
                                 .ToList();
