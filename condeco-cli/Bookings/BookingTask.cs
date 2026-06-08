@@ -118,13 +118,20 @@ namespace condeco_cli.Bookings
             //check task
             Task.Factory.StartNew(() =>
             {
+                var confirmedDates = new HashSet<DateOnly>();
+
                 while (Result.Status == BookingTaskStatus.InProgress)
                 {
                     try
                     {
-                        var date = Dates.First();
-                        var success = condeco.BookingSuccessful(Room, date, Booking.BookFor);
-                        if (success)
+                        foreach (var date in Dates)
+                        {
+                            if (!confirmedDates.Contains(date) && condeco.BookingSuccessful(Room, date, Booking.BookFor))
+                            {
+                                confirmedDates.Add(date);
+                            }
+                        }
+                        if (confirmedDates.Count == Dates.Count)
                         {
                             Result.AttemptsFinished = DateTime.Now;
                             Result.Status = BookingTaskStatus.BookingSuccessful;
