@@ -1,4 +1,5 @@
 ﻿using condeco_cli.Model;
+using condeco_cli.Updating;
 using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.People;
@@ -27,6 +28,8 @@ namespace condeco_cli.Config
         };
 
         public List<Booking> Bookings { get; private set; } = [];
+
+        public UpdateSettings UpdateSettings { get; set; } = new();
 
         public void Save()
         {
@@ -88,6 +91,12 @@ namespace condeco_cli.Config
                         section["Exclude_Dates"] = excludeDatesString;
                     }
                 });
+
+            ini["Updates"]["AutoUpdate"] = UpdateSettings.AutoUpdate.ToString();
+            if (UpdateSettings.FailedVersions.Count > 0)
+            {
+                ini["Updates"]["FailedVersions"] = string.Join(",", UpdateSettings.FailedVersions);
+            }
 
             var iniStr = ini.ToString();
             File.WriteAllText(ConfigFilename, iniStr);
@@ -175,6 +184,17 @@ namespace condeco_cli.Config
                             };
                         })
                         .ToList();
+
+            var autoUpdateStr = ini["Updates"]["AutoUpdate"];
+            var failedVersionsStr = ini["Updates"]["FailedVersions"];
+
+            UpdateSettings = new UpdateSettings
+            {
+                AutoUpdate = bool.TryParse(autoUpdateStr, out var au) && au,
+                FailedVersions = string.IsNullOrEmpty(failedVersionsStr)
+                    ? []
+                    : failedVersionsStr.Split(",", StringSplitOptions.TrimEntries).ToList()
+            };
         }
     }
 }

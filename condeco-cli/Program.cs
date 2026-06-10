@@ -3,6 +3,7 @@ using condeco_cli.Bookings;
 using condeco_cli.CLI;
 using condeco_cli.Config;
 using condeco_cli.Extensions;
+using condeco_cli.Updating;
 using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.Common;
@@ -15,7 +16,7 @@ namespace condeco_cli
     internal class Program
     {
         const string PROGRAM_NAME = "condeco-cli";
-        const string PROGRAM_VERSION = "1.7.0";
+        internal const string PROGRAM_VERSION = "1.7.0";
 
         //FPS 15/11/2025: The condeco API can be called at most 50 times per second, otherwise it returns "API calls quota exceeded! maximum admitted 50 per Second."
         private static IHttpClientFactory httpClientFactory = null!;
@@ -25,6 +26,20 @@ namespace condeco_cli
             Console.WriteLine($"{PROGRAM_NAME} {PROGRAM_VERSION}");
             Console.WriteLine($"Current date: {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Console.WriteLine();
+
+            var exePath = Environment.ProcessPath;
+            var exeDir = Path.GetDirectoryName(exePath);
+            var updater = PlatformUpdater.Create();
+            if (exePath != null && exeDir != null && updater != null)
+            {
+                //Take the update lock so we don't delete the .update file of a concurrent in-progress update
+                var lockPath = Path.Combine(exeDir, UpdateLock.LockFileName);
+                using var updateLock = UpdateLock.TryAcquire(lockPath);
+                if (updateLock != null)
+                {
+                    updater.CleanupOldFiles(exePath);
+                }
+            }
 
             Parser.Default.ParseArguments<BaseOptions>(args)
                 .WithParsed(opts =>
@@ -477,6 +492,8 @@ namespace condeco_cli
             }
 
             condeco.LogOut();
+
+            TryAutoUpdate(config);
         }
 
         static void RunCheckIn(BaseOptions opts)
@@ -550,6 +567,8 @@ namespace condeco_cli
             }
 
             condeco.LogOut();
+
+            TryAutoUpdate(config);
         }
 
         static void RunDump(BaseOptions opts)
@@ -621,6 +640,76 @@ namespace condeco_cli
 
             if (result == null) throw new Exception($"API not supported: {options.API}");
             return result;
+        }
+
+        static void TryAutoUpdate(CondecoCliConfig? config)
+        {
+            if (config == null || !config.UpdateSettings.AutoUpdate)
+            {
+                return;
+            }
+
+            try
+            {
+                var updater = PlatformUpdater.Create();
+                if (updater == null)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Auto-update is not supported on this platform.");
+                    return;
+                }
+
+                Console.WriteLine($"{DateTime.Now}  Checking for updates...");
+
+                //The release binaries are large, so allow more than the default 100 second timeout
+                using var httpClient = new HttpClient()
+                {
+                    Timeout = TimeSpan.FromMinutes(10)
+                };
+
+                var fetchResult = GitHubRelease.FetchLatest(httpClient);
+                var release = fetchResult.Release;
+                if (release == null)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Could not check for updates: {fetchResult.Error}");
+                    return;
+                }
+
+                var latestVersion = release.GetVersion();
+                if (latestVersion == null)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Could not parse a version from the release tag '{release.TagName}'.");
+                    return;
+                }
+
+                if (!UpdateChecker.IsNewerVersion(PROGRAM_VERSION, latestVersion))
+                {
+                    Console.WriteLine($"{DateTime.Now}  Already on the latest version ({PROGRAM_VERSION}).");
+                    return;
+                }
+
+                Console.WriteLine($"{DateTime.Now}  A new version is available: {latestVersion} (current version: {PROGRAM_VERSION}).");
+
+                if (UpdateChecker.IsVersionBlocked(latestVersion, config.UpdateSettings.FailedVersions))
+                {
+                    Console.WriteLine($"{DateTime.Now}  Skipping version {latestVersion} because a previous update attempt failed.");
+                    return;
+                }
+
+                Console.WriteLine($"{DateTime.Now}  Downloading and installing version {latestVersion}...");
+                var (Outcome, Message) = UpdateChecker.DownloadAndInstall(httpClient, release, updater);
+                Console.WriteLine($"{DateTime.Now}  {Message}");
+
+                if (Outcome == UpdateOutcome.Failed)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Recording version {latestVersion} as failed, so it isn't attempted again.");
+                    config.UpdateSettings.FailedVersions.Add(latestVersion.ToString());
+                    config.Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{DateTime.Now}  Auto-update check failed: {ex.Message}");
+            }
         }
 
         public static readonly ConsoleColor OriginalConsoleColour = Console.ForegroundColor;

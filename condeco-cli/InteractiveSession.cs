@@ -2,6 +2,7 @@
 using condeco_cli.Config;
 using condeco_cli.Model;
 using condeco_cli.Scheduling;
+using condeco_cli.Updating;
 using libCondeco;
 using libCondeco.Extensions;
 using libCondeco.Model.People;
@@ -509,6 +510,15 @@ namespace condeco_cli
 
         public void Run()
         {
+            if (config.UpdateSettings.AutoUpdate)
+            {
+                var updated = HandleCheckForUpdates(pauseOnNoUpdate: false);
+                if (updated)
+                {
+                    Environment.Exit(0);
+                }
+            }
+
             if (string.IsNullOrEmpty(config.Account.BaseUrl)) CollectBaseUrl();
             if (string.IsNullOrEmpty(config.Account.Username) && string.IsNullOrEmpty(config.Account.Token)) CollectCreds();
 
@@ -628,6 +638,11 @@ namespace condeco_cli
                     ? $"Scheduled check in ({checkinSchedule.Summary})"
                     : "Schedule check in (not configured)";
 
+                var checkForUpdates = "Check for updates";
+                var autoUpdateLabel = config.UpdateSettings.AutoUpdate
+                    ? "Automatic updates (on)"
+                    : "Automatic updates (off)";
+
                 var bookingChoices = new List<string> { addBooking };
                 if (config.Bookings.Count > 0)
                 {
@@ -640,6 +655,7 @@ namespace condeco_cli
                     .Mode(SelectionMode.Leaf)
                     .AddChoiceGroup("Bookings", bookingChoices)
                     .AddChoiceGroup("Scheduling", [scheduledBookingLabel, scheduledCheckinLabel])
+                    .AddChoiceGroup("Updates", [checkForUpdates, autoUpdateLabel])
                     .AddChoices([quit]);
 
                 var selectedAction = AnsiConsole.Prompt(prompt);
@@ -699,6 +715,22 @@ namespace condeco_cli
                 if (selectedAction == scheduledCheckinLabel)
                 {
                     HandleScheduleMenu("checkin", configSlug, checkinSchedule, condeco);
+                }
+
+                if (selectedAction == checkForUpdates)
+                {
+                    var updated = HandleCheckForUpdates();
+                    if (updated)
+                    {
+                        condeco.LogOut();
+                        Environment.Exit(0);
+                    }
+                }
+
+                if (selectedAction == autoUpdateLabel)
+                {
+                    config.UpdateSettings.AutoUpdate = !config.UpdateSettings.AutoUpdate;
+                    config.Save();
                 }
 
                 if (selectedAction == quit)
@@ -775,6 +807,126 @@ namespace condeco_cli
                 }
                 WaitForKeypress();
             }
+        }
+
+        //Returns true if an update was installed, in which case the program must exit.
+        //(The single-file bundle loads assemblies lazily from the exe path, so the process must not continue running after the swap.)
+        bool HandleCheckForUpdates(bool pauseOnNoUpdate = true)
+        {
+            AnsiConsole.MarkupLine("Checking for updates...");
+
+            try
+            {
+                //The release binaries are large, so allow more than the default 100 second timeout
+                using var httpClient = new HttpClient()
+                {
+                    Timeout = TimeSpan.FromMinutes(10)
+                };
+
+                var (Release, Error) = GitHubRelease.FetchLatest(httpClient);
+                var release = Release;
+                if (release == null)
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Could not check for updates: {Markup.Escape(Error ?? "Unknown error")}[/]");
+                    if (pauseOnNoUpdate)
+                    {
+                        WaitForKeypress();
+                    }
+                    return false;
+                }
+
+                var latestVersion = release.GetVersion();
+                if (latestVersion == null)
+                {
+                    AnsiConsole.MarkupLine("[yellow]Could not parse the latest version.[/]");
+                    if (pauseOnNoUpdate)
+                    {
+                        WaitForKeypress();
+                    }
+                    return false;
+                }
+
+                if (!UpdateChecker.IsNewerVersion(Program.PROGRAM_VERSION, latestVersion))
+                {
+                    AnsiConsole.MarkupLine($"[lime]You are on the latest version ({Program.PROGRAM_VERSION}).[/]");
+                    if (pauseOnNoUpdate)
+                    {
+                        WaitForKeypress();
+                    }
+                    return false;
+                }
+
+                var updater = PlatformUpdater.Create();
+                if (updater == null)
+                {
+                    AnsiConsole.MarkupLine("[yellow]Auto-update is not supported on this platform.[/]");
+                    if (pauseOnNoUpdate)
+                    {
+                        WaitForKeypress();
+                    }
+                    return false;
+                }
+
+                var versionStr = latestVersion.ToString();
+
+                AnsiConsole.MarkupLine($"[lime]A new version is available: {versionStr} (current version: {Program.PROGRAM_VERSION})[/]");
+
+                if (!string.IsNullOrWhiteSpace(release.Body))
+                {
+                    AnsiConsole.MarkupLine("");
+                    AnsiConsole.MarkupLine("[bold]Release notes:[/]");
+                    AnsiConsole.MarkupLine(Markup.Escape(release.Body.Trim()));
+                    AnsiConsole.MarkupLine("");
+                }
+
+                var isBlocked = UpdateChecker.IsVersionBlocked(latestVersion, config.UpdateSettings.FailedVersions);
+                if (isBlocked)
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Version {versionStr} was previously attempted but failed.[/]");
+                }
+
+                var confirm = AnsiConsole.Confirm($"Update to {versionStr}?", true);
+                if (!confirm)
+                {
+                    return false;
+                }
+
+                AnsiConsole.MarkupLine("Downloading update...");
+                var (Outcome, Message) = UpdateChecker.DownloadAndInstall(httpClient, release, updater);
+
+                if (Outcome == UpdateOutcome.Success)
+                {
+                    if (isBlocked)
+                    {
+                        config.UpdateSettings.FailedVersions.Remove(versionStr);
+                        config.Save();
+                    }
+                    AnsiConsole.MarkupLine($"[lime]{Markup.Escape(Message)}[/]");
+                    AnsiConsole.MarkupLine("condeco-cli will now exit. Please start it again to use the new version.");
+                    WaitForKeypress();
+                    return true;
+                }
+                else if (Outcome == UpdateOutcome.Failed)
+                {
+                    if (!isBlocked)
+                    {
+                        config.UpdateSettings.FailedVersions.Add(versionStr);
+                        config.Save();
+                    }
+                    AnsiConsole.MarkupLine($"[red]{Markup.Escape(Message)}[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(Message)}[/]");
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Update check failed: {Markup.Escape(ex.Message)}[/]");
+            }
+
+            WaitForKeypress();
+            return false;
         }
 
         static (DayOfWeek[]? Days, TimeOnly Time) PromptForSchedule(string taskType, ICondeco condeco, ScheduleInfo? existing)
