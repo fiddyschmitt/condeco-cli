@@ -115,7 +115,10 @@ namespace libCondeco
                 var sessionInfoJson = Encoding.UTF8.GetString(Convert.FromBase64String(sessionInfoBase64.Trim('"')));
                 var sessionInfo = JObject.Parse(sessionInfoJson);
                 userId = sessionInfo["userId"]?.ToString();
-                userFullName = sessionInfo["firstName"] + " " + sessionInfo["lastName"];
+
+                var firstName = sessionInfo["firstName"]?.ToString() ?? "";
+                var lastName = sessionInfo["lastName"]?.ToString() ?? "";
+                userFullName = $"{firstName} {lastName}".Trim();
 
                 var appSettingsJson = client.GetStringAsync($"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}").Result;
                 AppSettings = AppSettingResponse.FromServerResponse(appSettingsJson);
