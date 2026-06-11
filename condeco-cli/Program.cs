@@ -355,7 +355,7 @@ namespace condeco_cli
                         {
                             Console.WriteLine($"{DateTime.Now}  Error while waiting for new booking window details: {ex}.");
 
-                            if (ex.Message.Contains("401"))
+                            if (SessionExpiredException.IsSessionExpired(ex))
                             {
                                 Console.WriteLine($"{DateTime.Now}  Session expired. Stopping window detection.");
                                 break;

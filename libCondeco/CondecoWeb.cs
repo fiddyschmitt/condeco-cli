@@ -397,6 +397,11 @@ namespace libCondeco
 
             var postResponse = client.PostAsync("/webapi/BookingGrid/GetGridSettings", postContent).Result;
 
+            if (postResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                throw new SessionExpiredException($"Server returned {(int)postResponse.StatusCode}: {postResponse.ReasonPhrase}");
+            }
+
             if (!postResponse.IsSuccessStatusCode)
             {
                 throw new Exception($"Server returned {(int)postResponse.StatusCode}: {postResponse.ReasonPhrase}");
@@ -473,6 +478,11 @@ namespace libCondeco
             var postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
 
             var postResponse = client.PostAsync("/webapi/BookingGrid/GetFilteredGridSettings", postContent).Result;
+
+            if (postResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                throw new SessionExpiredException($"Server returned {(int)postResponse.StatusCode}: {postResponse.ReasonPhrase}");
+            }
 
             if (!postResponse.IsSuccessStatusCode)
             {

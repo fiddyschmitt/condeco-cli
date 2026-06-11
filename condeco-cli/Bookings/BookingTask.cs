@@ -150,7 +150,7 @@ namespace condeco_cli.Bookings
                     {
                         Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Error while checking booking: {ex.Message}");
 
-                        if (ex.Message.Contains("401"))
+                        if (SessionExpiredException.IsSessionExpired(ex))
                         {
                             Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Session expired. Stopping confirmation checks.");
                             Result.AttemptsFinished = DateTime.Now;
