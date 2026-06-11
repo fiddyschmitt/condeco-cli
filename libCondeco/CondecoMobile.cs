@@ -320,11 +320,11 @@ namespace libCondeco
                             .DeskResults
                             .MasterData
                             .SelectMany(md => md.LocationsV2)
-                            .Where(location => location.Name == locationName)
+                            .Where(location => location.Name.Equals(locationName, StringComparison.OrdinalIgnoreCase))
                             .SelectMany(location => location.WSTypes)
-                            .Where(wsType => wsType.WSTypeName == workspaceTypeName)
+                            .Where(wsType => wsType.WSTypeName.Equals(workspaceTypeName, StringComparison.OrdinalIgnoreCase))
                             .SelectMany(ws => ws.Groups)
-                            .FirstOrDefault(grp => grp.Name == groupName) ?? throw new Exception($"Could not retrieve group. [{nameof(locationName)}: {locationName}] [{nameof(workspaceTypeName)}: {workspaceTypeName}] [{nameof(groupName)}: {locationName}]");
+                            .FirstOrDefault(grp => grp.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Could not retrieve group. [{nameof(locationName)}: {locationName}] [{nameof(workspaceTypeName)}: {workspaceTypeName}] [{nameof(groupName)}: {groupName}]");
 
             return result;
         }
@@ -594,10 +594,10 @@ namespace libCondeco
         {
             var countries = GetCountries();
 
-            var country = countries.FirstOrDefault(country => country.Name == countryName) ?? throw new Exception($"Could not find country: {countryName}");
-            var location = country.Locations.FirstOrDefault(location => location.Name == locationName) ?? throw new Exception($"Could not find location: {locationName}");
-            var group = location.Groups.FirstOrDefault(group => group.Name == groupName) ?? throw new Exception($"Could not find group: {groupName}");
-            var floor = group.Floors.FirstOrDefault(floor => floor.Name == floorName) ?? throw new Exception($"Could not find floor: {floorName}");
+            var country = countries.FirstOrDefault(country => country.Name.Equals(countryName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Could not find country: {countryName}");
+            var location = country.Locations.FirstOrDefault(location => location.Name.Equals(locationName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Could not find location: {locationName}");
+            var group = location.Groups.FirstOrDefault(group => group.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Could not find group: {groupName}");
+            var floor = group.Floors.FirstOrDefault(floor => floor.Name.Equals(floorName, StringComparison.OrdinalIgnoreCase)) ?? throw new Exception($"Could not find floor: {floorName}");
 
             var floorPlan = GetFloorPlan(location.Id, group.Id, floor.Id);
 
