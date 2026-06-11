@@ -7,6 +7,7 @@ using libCondeco.Model.Web;
 using libCondeco.Model.Web.Responses;
 using libCondeco.Web;
 using Newtonsoft.Json.Linq;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -171,9 +172,9 @@ namespace libCondeco
             var bookForUserStr = bookForUser.ToGeneralFormString();
 
             var dateStr = dates
-                            .Select(date => $"{date:%d/%M/yyyy}")           //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
+                            .Select(date => date.ToString("d/M/yyyy", CultureInfo.InvariantCulture))           //todo: Maybe retrieve this format from GetFilteredGridSettings -> RoomSettings -> ShortDateFormat
                             .Select(date => $"{date}_0;{date}_1;")
-                            .ToString("");  
+                            .ToString("");
 
             var postStr = $$"""
                 {
@@ -699,10 +700,10 @@ namespace libCondeco
                 Path.Combine(outputFolder, "GetGlobalSettings.json"),
                 Path.Combine(outputFolder, "GetGlobalSettings-dec.json"));
 
-            GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/GetAllRoles?userlongId={userIdLong}&cultureCode=en-US", Path.Combine(outputFolder, "GetAllRoles.json"));
-            GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now:dd/MM/yyyy}&endDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
-            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1):dd/MM/yyyy}&deskEndDate={DateTime.Now.AddDays(35):dd/MM/yyyy}&roomStartDate={DateTime.Now}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
+            GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&endDate={DateTime.Now.AddDays(35).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&deskEndDate={DateTime.Now.AddDays(35).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&roomStartDate={DateTime.Now}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/team/GetMyTeams?userlongId={userIdLong}", Path.Combine(outputFolder, "GetMyTeams.json"));
 
             GetJson(client, $"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}", Path.Combine(outputFolder, "GetAppSetting.json"));

@@ -7,6 +7,7 @@ using libCondeco.Model.Space;
 using libCondeco.Model.Web.Responses;
 using libCondeco.Web;
 using Newtonsoft.Json.Linq;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -360,7 +361,7 @@ namespace libCondeco
 
         public LoginInformationsV2Response GetLoginInformation()
         {
-            var url = $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now:dd/MM/yyyy}&languageId=1&currentCulture=en-US";
+            var url = $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&languageId=1&currentCulture=en-US";
             var responseStr = client.GetStringAsync(url).Result;
 
             var result = LoginInformationsV2Response.FromServerResponse(responseStr);
@@ -737,7 +738,7 @@ namespace libCondeco
             }
 
             var dateStr = dates
-                            .Select(date => $"{date:dd/MM/yyyy}|3")
+                            .Select(date => $"{date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}|3")
                             .ToString(",");
 
             var url = $"/MobileAPI/DeskBookingService.svc/Book?accessToken={userIdLong}&userID={userIdToBookFor}&locationID={room.LocationId}&groupID={room.GroupId}&floorID={room.FloorId}&deskID={room.RoomId}&startDate={dateStr}";
@@ -829,7 +830,11 @@ namespace libCondeco
             fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
             toDate ??= fromDate;
 
-            var url = $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={fromDate:dd/MM/yyyy}&deskEndDate={toDate:dd/MM/yyyy}&roomStartDate={DateTime.Now:dd/MM/yyyy}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0";
+            var deskStartDateStr = fromDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var deskEndDateStr = toDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var roomStartDateStr = DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+            var url = $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={deskStartDateStr}&deskEndDate={deskEndDateStr}&roomStartDate={roomStartDateStr}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0";
 
             var listResultsStr = client.GetStringAsync(url).Result;
 
