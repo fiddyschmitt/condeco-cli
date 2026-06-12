@@ -29,6 +29,8 @@ namespace libCondeco
 
         public CondecoMobile(IHttpClientFactory httpClientFactory, string baseUrl)
         {
+            baseUrl = baseUrl.NormalizeBaseUrl();
+
             clientHandler = new SocketsHttpHandler
             {
                 CookieContainer = new CookieContainer(),

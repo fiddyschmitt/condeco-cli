@@ -20,6 +20,19 @@ namespace libCondeco.Extensions
             return string.Join(replacement, filename.Split(Path.GetInvalidFileNameChars()));
         }
 
+        //Accepts bare hostnames (e.g. "tenant.epturacloud.com") by defaulting to https://.
+        //.NET's Uri / HttpClient require an absolute URI with a scheme, so a scheme-less host
+        //would otherwise throw rather than be handled by the HTTP client.
+        public static string NormalizeBaseUrl(this string url)
+        {
+            var trimmed = url.Trim();
+            if (trimmed.Length > 0 && !trimmed.Contains("://"))
+            {
+                trimmed = "https://" + trimmed;
+            }
+            return trimmed;
+        }
+
         public static string ToJson(this object? obj, bool indent = false)
         {
             var settings = new JsonSerializerSettings() { Formatting = Formatting.Indented };

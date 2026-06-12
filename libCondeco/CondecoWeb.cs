@@ -41,6 +41,8 @@ namespace libCondeco
 
         public CondecoWeb(IHttpClientFactory httpClientFactory, string baseUrl)
         {
+            baseUrl = baseUrl.NormalizeBaseUrl();
+
             clientHandler = new HttpClientHandler
             {
                 CookieContainer = new CookieContainer()

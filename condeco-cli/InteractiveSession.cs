@@ -39,6 +39,9 @@ namespace condeco_cli
             {
                 Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
 
+                //Accept bare hostnames (e.g. "acme.condecosoftware.com") by defaulting to https://.
+                config.Account.BaseUrl = config.Account.BaseUrl.NormalizeBaseUrl();
+
                 if (Uri.TryCreate(config.Account.BaseUrl, UriKind.Absolute, out var _))
                 {
                     config.Save();
