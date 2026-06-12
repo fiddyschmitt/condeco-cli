@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 /condeco-cli/config.ini
 /.claude
+
+# Local research / reverse-engineering notes (not for commit)
+/research/
