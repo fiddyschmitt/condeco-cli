@@ -356,6 +356,52 @@ namespace libCondeco
             };
         }
 
+        //The manual-paste flow's redirect lands on com.condecosoftware.condeco://oidc_callback?code=...,
+        //which a desktop browser can't open, so the user copies it from the address bar. Accept either
+        //the whole redirect URL or just the bare code.
+        public static string ExtractAuthCode(string pastedValue)
+        {
+            if (string.IsNullOrWhiteSpace(pastedValue))
+            {
+                return "";
+            }
+
+            var value = pastedValue.Trim();
+
+            var queryIndex = value.IndexOf('?');
+            if (queryIndex < 0)
+            {
+                //No query string - treat the whole thing as the code.
+                return value;
+            }
+
+            var query = value[(queryIndex + 1)..];
+            var fragmentIndex = query.IndexOf('#');
+            if (fragmentIndex >= 0)
+            {
+                query = query[..fragmentIndex];
+            }
+
+            foreach (var parameter in query.Split('&'))
+            {
+                var separatorIndex = parameter.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    continue;
+                }
+
+                var name = parameter[..separatorIndex];
+                if (name.Equals("code", StringComparison.OrdinalIgnoreCase))
+                {
+                    var rawValue = parameter[(separatorIndex + 1)..];
+                    return Uri.UnescapeDataString(rawValue);
+                }
+            }
+
+            //A URL was pasted but had no code parameter; return it unchanged so the exchange error surfaces.
+            return value;
+        }
+
         public const string OobRedirectUri = "urn:ietf:wg:oauth:2.0:oob";
         public const string AppRedirectUri = "com.condecosoftware.condeco://oidc_callback";
     }

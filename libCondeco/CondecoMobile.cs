@@ -290,12 +290,19 @@ namespace libCondeco
             }
 
             Console.WriteLine("[SSO] Starting manual paste flow...");
-            var redirectUri = SsoLogin.OobRedirectUri;
+            //Use the app's registered redirect URI. The IdP only accepts redirect URIs registered for the
+            //client; the out-of-band URN is not one of them (it 400s with "Invalid redirect_uri"), whereas
+            //the app's custom scheme is. The token exchange below reuses this same value (OAuth requires it).
+            var redirectUri = SsoLogin.AppRedirectUri;
             var authUrl = SsoLogin.BuildAuthorizationUrl(ssoConfig, redirectUri);
 
             print("");
             print("Open this URL in a browser to sign in:");
             print($"  {authUrl}");
+            print("");
+            print("After signing in, your browser will try to open a 'com.condecosoftware.condeco://...' link");
+            print("and show an error - that is expected on desktop. Copy that whole URL from the address bar");
+            print("(or just the 'code' value from it) and paste it below.");
             print("");
 
             if (promptForAuthCode == null)
@@ -304,7 +311,8 @@ namespace libCondeco
                 return (false, "SSO requires interactive input but no prompt callback was provided.", null);
             }
 
-            var code = promptForAuthCode();
+            var pastedValue = promptForAuthCode();
+            var code = SsoLogin.ExtractAuthCode(pastedValue);
             if (string.IsNullOrEmpty(code))
             {
                 Console.WriteLine("[SSO] No authorization code provided.");

@@ -557,7 +557,7 @@ namespace condeco_cli
                             () =>
                             {
                                 Console.SetOut(originalOut);
-                                var code = AnsiConsole.Ask<string>("Paste the authorization code here:");
+                                var code = AnsiConsole.Ask<string>("Paste the redirect URL (or just the code):");
                                 Console.SetOut(ssoDiagnostics);
                                 return code;
                             },
