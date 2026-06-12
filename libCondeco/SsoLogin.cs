@@ -62,11 +62,12 @@ namespace libCondeco
             foreach (var prop in authInfo.Properties())
             {
                 if (prop.Name is "type" or "client_id" or "ssoUrl") continue;
-                if (prop.Value.Type == JTokenType.String)
-                {
-                    parameters[prop.Name] = prop.Value.ToString();
-                    Console.WriteLine($"[SSO] Extra param: {prop.Name} = \"{prop.Value}\"");
-                }
+
+                //The app stringifies every extra value (String.valueOf), so include non-string primitives (eg. numbers, booleans) too
+                if (prop.Value.Type is JTokenType.Object or JTokenType.Array or JTokenType.Null) continue;
+
+                parameters[prop.Name] = prop.Value.ToString();
+                Console.WriteLine($"[SSO] Extra param: {prop.Name} = \"{prop.Value}\"");
             }
 
             Console.WriteLine("[SSO] SSO config parsed from systeminfo successfully.");
