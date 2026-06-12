@@ -37,17 +37,7 @@ namespace condeco_cli
         {
             while (true)
             {
-                Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco / Eptura Engage service (example: https://acme.condecosoftware.com), or your email address to look up your Eptura One tenant: ");
-
-                var entered = config.Account.BaseUrl.Trim();
-
-                //If the user typed an email, run the Eptura One tenant discovery and re-prompt for the URL
-                if (entered.Contains('@') && !entered.Contains("://") && !entered.Contains(' '))
-                {
-                    LookUpTenantByEmail(entered);
-                    config.Account.BaseUrl = "";
-                    continue;
-                }
+                Collect(ref config.Account.BaseUrl, "Please enter the url of your Condeco service (example: https://acme.condecosoftware.com): ");
 
                 if (Uri.TryCreate(config.Account.BaseUrl, UriKind.Absolute, out var _))
                 {
@@ -58,33 +48,6 @@ namespace condeco_cli
                 {
                    AnsiConsole.MarkupLine("[red]The URL entered is not valid. Please try again.[/]\n");
                 }
-            }
-        }
-
-        void LookUpTenantByEmail(string email)
-        {
-            AnsiConsole.MarkupLine($"[yellow]Looking up Eptura One tenant for {Markup.Escape(email)}...[/]");
-            try
-            {
-                using var http = new HttpClient();
-                var tenants = PlatformDiscovery.DiscoverByEmail(http, email);
-                if (tenants.Count == 0)
-                {
-                    AnsiConsole.MarkupLine("[grey]No Eptura One tenant found for that email. You may be on a classic Condeco tenant — enter your service URL instead.[/]\n");
-                    return;
-                }
-
-                foreach (var tenant in tenants)
-                {
-                    AnsiConsole.MarkupLine($"[lime]Found tenant:[/] {Markup.Escape(tenant.TenantName)} ({Markup.Escape(tenant.TenantCode)})");
-                    AnsiConsole.MarkupLine($"  Client ID:  {Markup.Escape(tenant.ClientId)}");
-                    AnsiConsole.MarkupLine($"  Login type: {(tenant.IsFormUser ? "Username / password" : "SSO")}");
-                }
-                AnsiConsole.MarkupLine("[grey]Now enter your Eptura Engage URL to continue signing in.[/]\n");
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"[red]Tenant lookup failed: {Markup.Escape(ex.Message)}[/]\n");
             }
         }
 
