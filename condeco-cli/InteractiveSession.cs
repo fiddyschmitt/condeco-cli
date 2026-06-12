@@ -94,6 +94,8 @@ namespace condeco_cli
             if (detectedPlatform != null)
             {
                 AnsiConsole.MarkupLine("[lime]This tenant is on the Eptura One platform.[/]");
+                AnsiConsole.MarkupLine("[yellow]Eptura One support is experimental and has not yet been verified against a real account.[/]");
+                AnsiConsole.MarkupLine("[yellow]Detailed diagnostics (lines starting with \"Platform\") will be printed during sign-in - please share them if you report whether it worked.[/]");
                 AnsiConsole.MarkupLine($"  Ping URL: {Markup.Escape(detectedPlatform.PingUrl)}");
                 AnsiConsole.MarkupLine($"  Auth URL: {Markup.Escape(detectedPlatform.AuthUrl)}");
                 if (!string.IsNullOrEmpty(detectedPlatform.BaseUrl))

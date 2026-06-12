@@ -145,9 +145,15 @@ namespace libCondeco
             var url = $"/MobileAPI/mobileservice.svc/login/ValidatePlatformToken?currentCulture={Uri.EscapeDataString(currentCulture)}";
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+            //UNVERIFIED CHOICE (item 1 of 3): the Authorization header value. We send the SSO access
+            //token raw. If the exchange comes back 401/unauthorized, the alternative to try right here
+            //is a "Bearer " prefix: TryAddWithoutValidation("Authorization", "Bearer " + ssoAccessToken).
+            Console.WriteLine("[Platform][UNTESTED] ValidatePlatformToken: sending Authorization as the RAW SSO token (alternative: \"Bearer \" prefix).");
             request.Headers.TryAddWithoutValidation("Authorization", ssoAccessToken);
 
             var response = client.Send(request);
+            Console.WriteLine($"[Platform] ValidatePlatformToken HTTP response: {(int)response.StatusCode} {response.StatusCode}");
             var json = response.Content.ReadAsStringAsync().Result;
 
             return json.ToObject<JsonPlatFormToken>();
@@ -156,21 +162,45 @@ namespace libCondeco
         //Logs in using an SSO/IdP access token. For Eptura One ("platform") tenants this first
         //exchanges the SSO token for a platform session token (ValidatePlatformToken) and logs in
         //with that; for classic tenants the SSO token is used directly.
-        //NOTE: the platform-token exchange is reverse-engineered and not yet validated against a
-        //real customer login — it may need an adjustment (e.g. a "Bearer " prefix on the
-        //Authorization header, or using Token vs SessionToken) once tested.
+        //NOTE: the platform path is NOT yet validated against a real customer
+        //login. It makes three unverified choices, each marked inline and logged at runtime (prefix
+        //"[Platform][UNTESTED]") so a returned log shows which way we went:
+        //  item 1 - Authorization header format (raw vs "Bearer "): in ValidatePlatformToken above.
+        //  item 2 - which token field to log in with (SessionToken vs Token): below.
+        //  item 3 - which "door": tenant SSO host + tenant-host exchange (what we do) vs the platform
+        //           OAuth host platformAuthURL/home.epturacloud.com that the app uses: below.
         public (bool Success, string ErrorMessage) LogInWithSsoAccessToken(string ssoAccessToken)
         {
             var platform = DetectPlatform();
             if (platform != null)
             {
-                Console.WriteLine("[Platform] Eptura One tenant — exchanging the SSO token for a platform session token...");
+                Console.WriteLine("[Platform][UNTESTED] *** Eptura One (platform) tenant. This login path is EXPERIMENTAL and has not been confirmed against a real account. ***");
+                Console.WriteLine("[Platform][UNTESTED] *** Please share this log (whether it works or fails) so the choices below can be verified. ***");
+
+                //UNVERIFIED CHOICE (item 3 of 3): the "door". We authenticate against the tenant's own
+                //SSO host (see the [SSO] lines above) and exchange on the tenant host. The app instead
+                //authenticates against the platform OAuth host below (home.epturacloud.com); if the
+                //tenant-host path never yields a bookable session, that platform path is the alternative.
+                Console.WriteLine("[Platform][UNTESTED] Door in use: tenant SSO host -> tenant-host ValidatePlatformToken.");
+                Console.WriteLine($"[Platform][UNTESTED] Door NOT used (the app's path): platformAuthURL=\"{platform.AuthUrl}\", platformBaseURL=\"{platform.BaseUrl}\".");
+
+                Console.WriteLine("[Platform] Exchanging the SSO token for a platform session token...");
                 try
                 {
                     var platformToken = ValidatePlatformToken(ssoAccessToken);
+                    if (platformToken != null)
+                    {
+                        var hasSessionToken = !string.IsNullOrEmpty(platformToken.SessionToken);
+                        var hasToken = !string.IsNullOrEmpty(platformToken.Token);
+                        Console.WriteLine($"[Platform] ValidatePlatformToken parsed: Success={platformToken.Success}, SessionToken present={hasSessionToken}, Token present={hasToken}.");
+                    }
+
                     if (platformToken != null && platformToken.Success && !string.IsNullOrEmpty(platformToken.SessionToken))
                     {
-                        Console.WriteLine("[Platform] Platform session token obtained.");
+                        //UNVERIFIED CHOICE (item 2 of 3): which field to log in with. We use SessionToken;
+                        //if the subsequent login or booking calls fail as unauthorized, the alternative to
+                        //try here is platformToken.Token.
+                        Console.WriteLine("[Platform][UNTESTED] Logging in with SessionToken (alternative: Token).");
                         return LogIn(platformToken.SessionToken);
                     }
                     Console.WriteLine("[Platform] ValidatePlatformToken did not return a session token; falling back to the raw SSO token.");
