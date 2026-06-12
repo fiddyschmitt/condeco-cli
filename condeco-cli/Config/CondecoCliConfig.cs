@@ -42,12 +42,9 @@ namespace condeco_cli.Config
                 ini["Account"]["Username"] = Account.Username;
                 ini["Account"]["Password"] = Account.Password;
             }
-            else if (!string.IsNullOrEmpty(Account.Token))
+            else if (!string.IsNullOrEmpty(Account.RefreshToken))
             {
-                ini["Account"]["Token"] = Account.Token;
-
-                if (!string.IsNullOrEmpty(Account.RefreshToken))
-                    ini["Account"]["RefreshToken"] = Account.RefreshToken;
+                ini["Account"]["RefreshToken"] = Account.RefreshToken;
             }
 
             var bookingNumber = 1;
@@ -122,9 +119,8 @@ namespace condeco_cli.Config
                 Account.Username = ini["Account"]["Username"];
                 Account.Password = ini["Account"]["Password"];
             }
-            else if (!string.IsNullOrEmpty(ini["Account"]["Token"]))
+            else
             {
-                Account.Token = ini["Account"]["Token"];
                 Account.RefreshToken = ini["Account"]["RefreshToken"] ?? "";
             }
 

@@ -107,40 +107,12 @@ namespace condeco_cli
 
             if (detectedSsoConfig != null)
             {
+                //SSO is the only supported method on an SSO server; the sign-in itself happens at login time.
                 AnsiConsole.MarkupLine("[yellow]This server uses SSO authentication.[/]");
-
-                var ssoStr = "SSO (browser sign-in)";
-                var tokenStr = "Token (paste an existing token)";
-
-                var loginType = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                                                        .Title("Log in using: ")
-                                                        .AddChoices([ssoStr, tokenStr]));
-
-                if (loginType == tokenStr)
-                {
-                    detectedSsoConfig = null;
-                    Collect(ref config.Account.Token, "Please enter token: ");
-                    config.Save();
-                }
             }
             else
             {
-                var usernameAndPasswordStr = "Username and password";
-                var tokenStr = "Token";
-
-                var loginType = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                                                        .Title("Log in using: ")
-                                                        .AddChoices([usernameAndPasswordStr, tokenStr]));
-
-                if (loginType == usernameAndPasswordStr)
-                {
-                    CollectUsernameAndPassword();
-                }
-                else if (loginType == tokenStr)
-                {
-                    Collect(ref config.Account.Token, "Please enter token: ");
-                    config.Save();
-                }
+                CollectUsernameAndPassword();
             }
         }
 
@@ -540,7 +512,7 @@ namespace condeco_cli
             }
 
             if (string.IsNullOrEmpty(config.Account.BaseUrl)) CollectBaseUrl();
-            if (string.IsNullOrEmpty(config.Account.Username) && string.IsNullOrEmpty(config.Account.Token)) CollectCreds();
+            if (!config.Account.IsConfigured) CollectCreds();
 
             ICondeco? condeco = null;
 
@@ -549,6 +521,22 @@ namespace condeco_cli
                 condeco = Program.BuildCondecoInterface(options, config);
 
                 var loggedIn = false;
+
+                //A returning SSO account skips CollectCreds (creds already stored), so detection hasn't
+                //run this session. Re-detect quietly to get the SSO config that drives the sign-in.
+                if (detectedSsoConfig == null && config.Account.IsSsoAccount && condeco is CondecoMobile mobileDetect)
+                {
+                    var detectOut = Console.Out;
+                    Console.SetOut(new StringWriter());
+                    try
+                    {
+                        detectedSsoConfig = mobileDetect.DetectSso();
+                    }
+                    finally
+                    {
+                        Console.SetOut(detectOut);
+                    }
+                }
 
                 if (detectedSsoConfig != null && condeco is CondecoMobile mobile)
                 {
@@ -584,7 +572,6 @@ namespace condeco_cli
 
                     if (loggedIn && tokens != null)
                     {
-                        config.Account.Token = tokens.AccessToken;
                         config.Account.RefreshToken = tokens.RefreshToken ?? "";
                         config.Save();
                         AnsiConsole.MarkupLine("[grey][[SSO]] Tokens saved to config.[/]");
@@ -604,14 +591,7 @@ namespace condeco_cli
                         .Spinner(Spinner.Known.Default)
                         .Start("[yellow]Logging in[/]", ctx =>
                         {
-                            if (!string.IsNullOrEmpty(config.Account.Username))
-                            {
-                                (loggedIn, _) = condeco.LogIn(config.Account.Username, config.Account.Password);
-                            }
-                            else if (!string.IsNullOrEmpty(config.Account.Token))
-                            {
-                                (loggedIn, _) = condeco.LogIn(config.Account.Token);
-                            }
+                            (loggedIn, _) = condeco.LogIn(config.Account.Username, config.Account.Password);
                         });
                 }
 

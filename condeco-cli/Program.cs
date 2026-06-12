@@ -97,24 +97,32 @@ namespace condeco_cli
             {
                 (loggedIn, errorMessage) = condeco.LogIn(config.Account.Username, config.Account.Password);
             }
-            else if (!string.IsNullOrEmpty(config.Account.Token))
+            else if (config.Account.IsSsoAccount)
             {
-                (loggedIn, errorMessage) = condeco.LogIn(config.Account.Token);
-
-                if (!loggedIn && !string.IsNullOrEmpty(config.Account.RefreshToken) && condeco is CondecoMobile mobileRefresh)
+                //SSO/Eptura One: the only durable credential is the refresh token. Mint a fresh session
+                //from it (for platform tenants this also runs the platform-token exchange internally).
+                var mobileRefresh = condeco as CondecoMobile;
+                if (string.IsNullOrEmpty(config.Account.RefreshToken) || mobileRefresh == null)
                 {
-                    Console.WriteLine("[SSO] Token login failed. Attempting SSO refresh...");
+                    errorMessage = "No refresh token available to refresh the SSO session. Please re-authenticate interactively.";
+                }
+                else
+                {
+                    Console.WriteLine("[SSO] Refreshing the session from the stored refresh token...");
                     var ssoConfig = mobileRefresh.DetectSso();
-                    if (ssoConfig != null)
+                    if (ssoConfig == null)
                     {
-                        var (refreshSuccess, refreshError, refreshedTokens) = mobileRefresh.RefreshSsoToken(ssoConfig, config.Account.RefreshToken);
-                        loggedIn = refreshSuccess;
-                        errorMessage = refreshError;
+                        errorMessage = "Could not determine the SSO configuration. Please re-authenticate interactively.";
+                    }
+                    else
+                    {
+                        var refreshResult = mobileRefresh.RefreshSsoToken(ssoConfig, config.Account.RefreshToken);
+                        loggedIn = refreshResult.Success;
+                        errorMessage = refreshResult.ErrorMessage;
 
-                        if (loggedIn && refreshedTokens != null)
+                        if (loggedIn && refreshResult.Tokens != null)
                         {
-                            config.Account.Token = refreshedTokens.AccessToken;
-                            config.Account.RefreshToken = refreshedTokens.RefreshToken ?? config.Account.RefreshToken;
+                            config.Account.RefreshToken = refreshResult.Tokens.RefreshToken ?? config.Account.RefreshToken;
                             config.Save();
                             Console.WriteLine("[SSO] Refreshed tokens saved to config.");
                         }
@@ -616,7 +624,7 @@ namespace condeco_cli
 
         static void CheckAccountIsPopulated(CondecoCliConfig? config)
         {
-            if (config == null || (string.IsNullOrEmpty(config.Account.Username) && string.IsNullOrEmpty(config.Account.Token)))
+            if (config == null || !config.Account.IsConfigured)
             {
                 Console.WriteLine($"Please run condeco-cli without arguments to populate the config.");
                 Console.WriteLine("Exiting.");
