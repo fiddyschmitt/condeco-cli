@@ -1,4 +1,5 @@
-﻿using libCondeco.Extensions;
+﻿using libCondeco.EpturaOne;
+using libCondeco.Extensions;
 using libCondeco.Model.Bookings;
 using libCondeco.Model.Common;
 using libCondeco.Model.Mobile.Responses;
@@ -110,6 +111,77 @@ namespace libCondeco
             return null;
         }
 
+        //Detects whether this tenant is on the Eptura One ("platform") backend and, if so, returns
+        //the resolved platform config (URLs + decrypted base/id/ref). Returns null for classic tenants.
+        public PlatformConfig? DetectPlatform()
+        {
+            var host = client.BaseAddress?.Host ?? "";
+
+            try
+            {
+                var systemInfoResponse = client.GetAsync("/api/systeminfo").Result;
+                if (systemInfoResponse.IsSuccessStatusCode)
+                {
+                    var json = systemInfoResponse.Content.ReadAsStringAsync().Result;
+                    var systemInfo = json.ToObject<SystemInfoResponse>();
+                    return PlatformConfig.FromSystemInfo(systemInfo, host);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Platform] Detection failed: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        //Eptura One platform-token exchange: trades an SSO/IdP access token for a platform
+        //session token. Called on the tenant host.
+        //GET /MobileAPI/mobileservice.svc/login/ValidatePlatformToken, Authorization = ssoAccessToken.
+        public JsonPlatFormToken? ValidatePlatformToken(string ssoAccessToken, string currentCulture = "en-US")
+        {
+            var url = $"/MobileAPI/mobileservice.svc/login/ValidatePlatformToken?currentCulture={Uri.EscapeDataString(currentCulture)}";
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("Authorization", ssoAccessToken);
+
+            var response = client.Send(request);
+            var json = response.Content.ReadAsStringAsync().Result;
+
+            return json.ToObject<JsonPlatFormToken>();
+        }
+
+        //Logs in using an SSO/IdP access token. For Eptura One ("platform") tenants this first
+        //exchanges the SSO token for a platform session token (ValidatePlatformToken) and logs in
+        //with that; for classic tenants the SSO token is used directly.
+        //NOTE: the platform-token exchange is reverse-engineered and not yet validated against a
+        //real customer login — it may need an adjustment (e.g. a "Bearer " prefix on the
+        //Authorization header, or using Token vs SessionToken) once tested.
+        public (bool Success, string ErrorMessage) LogInWithSsoAccessToken(string ssoAccessToken)
+        {
+            var platform = DetectPlatform();
+            if (platform != null)
+            {
+                Console.WriteLine("[Platform] Eptura One tenant — exchanging the SSO token for a platform session token...");
+                try
+                {
+                    var platformToken = ValidatePlatformToken(ssoAccessToken);
+                    if (platformToken != null && platformToken.Success && !string.IsNullOrEmpty(platformToken.SessionToken))
+                    {
+                        Console.WriteLine("[Platform] Platform session token obtained.");
+                        return LogIn(platformToken.SessionToken);
+                    }
+                    Console.WriteLine("[Platform] ValidatePlatformToken did not return a session token; falling back to the raw SSO token.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Platform] ValidatePlatformToken failed: {ex.Message}. Falling back to the raw SSO token.");
+                }
+            }
+
+            return LogIn(ssoAccessToken);
+        }
+
         public (bool Success, string ErrorMessage, SsoTokens? Tokens) SsoLogIn(
             SsoConfig ssoConfig,
             string? existingRefreshToken,
@@ -129,7 +201,7 @@ namespace libCondeco
                 {
                     var refreshedTokens = SsoLogin.RefreshAccessToken(client, ssoConfig, existingRefreshToken);
                     Console.WriteLine("[SSO] Refresh token succeeded. Logging in with access token...");
-                    var (success, error) = LogIn(refreshedTokens.AccessToken);
+                    var (success, error) = LogInWithSsoAccessToken(refreshedTokens.AccessToken);
                     if (success)
                     {
                         Console.WriteLine("[SSO] Login with refreshed token successful.");
@@ -160,7 +232,7 @@ namespace libCondeco
                     }, cancellationToken);
 
                     Console.WriteLine("[SSO] Device code flow succeeded. Logging in with access token...");
-                    var (success, error) = LogIn(tokens.AccessToken);
+                    var (success, error) = LogInWithSsoAccessToken(tokens.AccessToken);
                     if (success)
                     {
                         Console.WriteLine("[SSO] Login with device code token successful.");
@@ -236,7 +308,7 @@ namespace libCondeco
             {
                 var refreshedTokens = SsoLogin.RefreshAccessToken(client, ssoConfig, refreshToken);
                 Console.WriteLine("[SSO] Refresh succeeded. Logging in with new access token...");
-                var (success, error) = LogIn(refreshedTokens.AccessToken);
+                var (success, error) = LogInWithSsoAccessToken(refreshedTokens.AccessToken);
                 if (success)
                 {
                     Console.WriteLine("[SSO] Login with refreshed token successful.");
