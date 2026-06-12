@@ -402,6 +402,31 @@ namespace libCondeco
             return value;
         }
 
+        //Server-side SSO config can come back with unsubstituted template tokens (e.g. "#PINGOAUTHCLIENTID#")
+        //when a tenant has SSO switched on but never provisioned. Returns the first such placeholder, or null.
+        public static string? FindUnconfiguredPlaceholder(SsoConfig config)
+        {
+            if (LooksLikePlaceholder(config.ClientId))
+            {
+                return config.ClientId;
+            }
+
+            foreach (var parameter in config.Parameters)
+            {
+                if (LooksLikePlaceholder(parameter.Value))
+                {
+                    return parameter.Value;
+                }
+            }
+
+            return null;
+        }
+
+        static bool LooksLikePlaceholder(string value)
+        {
+            return value.Length > 2 && value.StartsWith('#') && value.EndsWith('#');
+        }
+
         public const string OobRedirectUri = "urn:ietf:wg:oauth:2.0:oob";
         public const string AppRedirectUri = "com.condecosoftware.condeco://oidc_callback";
     }

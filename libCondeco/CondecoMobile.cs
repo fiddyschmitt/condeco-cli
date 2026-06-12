@@ -226,6 +226,14 @@ namespace libCondeco
             Console.WriteLine("[SSO] === Starting SSO Login ===");
             Console.WriteLine($"[SSO] Config:\n{ssoConfig}");
 
+            var placeholder = SsoLogin.FindUnconfiguredPlaceholder(ssoConfig);
+            if (placeholder != null)
+            {
+                var message = $"This server's SSO is not fully configured (it returned the placeholder \"{placeholder}\"). Contact your Condeco administrator.";
+                Console.WriteLine($"[SSO] {message}");
+                return (false, message, null);
+            }
+
             if (!string.IsNullOrEmpty(existingRefreshToken))
             {
                 Console.WriteLine("[SSO] Attempting refresh token login...");
