@@ -486,8 +486,8 @@ namespace condeco_cli
                                 break;
 
                             case BookingTaskStatus.BookingTimedOut:
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"Timed out");
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine(DescribeUnconfirmed(res.Outcome, duration));
                                 Console.ForegroundColor = OriginalConsoleColour;
                                 break;
                         }
@@ -502,6 +502,40 @@ namespace condeco_cli
             condeco.LogOut();
 
             TryAutoUpdate(config);
+        }
+
+        //A booking task that ends without a positive confirmation used to print a bare "Timed out", which
+        //reads as failure. At the midnight rollover the server routinely 500s while still creating the
+        //booking (a parallel task booking the same range often confirms fine), so that label was misleading.
+        //Say what actually happened: surface the server's last response and let the reader judge.
+        static string DescribeUnconfirmed(string outcome, TimeSpan duration)
+        {
+            var withinTime = $"not verified within {duration.TotalSeconds:N0}s";
+
+            var cleaned = (outcome ?? string.Empty)
+                .Replace("\"", "")
+                .Replace("\\n", "")
+                .Trim();
+
+            //Same success heuristic the range-confirmation used: a bare booking id (web) or ResponseCode 100 (mobile).
+            if (int.TryParse(cleaned, out _) || cleaned.Contains("ResponseCode:100"))
+            {
+                return $"Booked — request accepted, but confirmation was {withinTime}";
+            }
+
+            if (cleaned.Length == 0)
+            {
+                return $"Unconfirmed — no server response captured; {withinTime}. Desk may still be booked";
+            }
+
+            if (cleaned.Contains("500") || cleaned.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Unconfirmed — server returned HTTP 500 at rollover (the booking often still succeeds); {withinTime}";
+            }
+
+            //Surface whatever the server actually said so a genuine rejection (e.g. desk already taken) is visible.
+            var summary = cleaned.Length > 160 ? string.Concat(cleaned.AsSpan(0, 160), "…") : cleaned;
+            return $"Unconfirmed — {withinTime}; last server response: {summary}";
         }
 
         static void RunCheckIn(BaseOptions opts)
