@@ -152,7 +152,10 @@ namespace condeco_cli.Bookings
 
                         if (SessionExpiredException.IsSessionExpired(ex))
                         {
-                            Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Session expired. Stopping confirmation checks.");
+                            //A 401 normally never reaches here: the ReAuthHandler re-logs in and retries
+                            //transparently. Getting here means that automatic re-login itself failed, so
+                            //there's no point continuing to poll.
+                            Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Session expired and automatic re-login failed. Stopping confirmation checks.");
                             Result.AttemptsFinished = DateTime.Now;
                             Result.Status = BookingTaskStatus.BookingTimedOut;
                             break;

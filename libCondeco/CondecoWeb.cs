@@ -39,6 +39,11 @@ namespace libCondeco
         string userFullName = string.Empty;
         AppSettingResponse? AppSettings;     //app settings as provided by web server
 
+        //Stored so the ReAuthHandler can re-authenticate on a 401 without going back to the caller.
+        string? username;
+        string? password;
+        string? eliteSessionToken;
+
         public CondecoWeb(IHttpClientFactory httpClientFactory, string baseUrl)
         {
             baseUrl = baseUrl.NormalizeBaseUrl();
@@ -48,7 +53,7 @@ namespace libCondeco
                 CookieContainer = new CookieContainer()
             };
 
-            client = httpClientFactory.CreateClient(clientHandler);
+            client = httpClientFactory.CreateClient(clientHandler, ReAuthenticate);
             client.BaseAddress = new Uri(baseUrl);
             client.Timeout = TimeSpan.FromMinutes(15);
 
@@ -57,6 +62,10 @@ namespace libCondeco
 
         public (bool Success, string ErrorMessage) LogIn(string username, string password)
         {
+            //remember the credentials so the ReAuthHandler can silently re-login on a 401
+            this.username = username;
+            this.password = password;
+
             try
             {
                 //get the login page to obtain ASP.NET anti-forgery tokens
@@ -104,7 +113,7 @@ namespace libCondeco
                     return (false, $"Could not authenticate: {authResponse}");
                 }
 
-                var eliteSessionToken = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["EliteSession"]?.Value;
+                eliteSessionToken = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["EliteSession"]?.Value;
 
                 if (eliteSessionToken == null)
                 {
@@ -138,6 +147,28 @@ namespace libCondeco
         public (bool Success, string ErrorMessage) LogIn(string token)
         {
             throw new NotSupportedException($"{nameof(CondecoWeb)} does not support logging in using a token. Instead, try using: --api mobile");
+        }
+
+        //Invoked by the ReAuthHandler when a request comes back 401. Re-runs the full sign-in with the
+        //stored credentials and returns the fresh EliteSession bearer (or null if it can't). Runs
+        //single-flight inside the handler, so it won't race with itself.
+        string? ReAuthenticate()
+        {
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                return null;
+            }
+
+            Console.WriteLine($"{DateTime.Now}  Session expired (401). Re-authenticating...");
+            var (success, errorMessage) = LogIn(username, password);
+            if (success)
+            {
+                Console.WriteLine($"{DateTime.Now}  Re-authentication succeeded.");
+                return eliteSessionToken;
+            }
+
+            Console.WriteLine($"{DateTime.Now}  Re-authentication failed: {errorMessage}");
+            return null;
         }
 
         public string GetFullName()
