@@ -814,6 +814,14 @@ namespace libCondeco
                                     var resId = AppSettings?.WorkspaceTypes.FirstOrDefault(wt => wt.Id == workspaceType.Id)?.ResourceId;
                                     if (resId == null) continue;
 
+                                    //Snapshot from today out to the booking horizon. Without an EndDate the
+                                    //server defaults it to 0001-01-01 and GetFilteredBookings returns nothing,
+                                    //so the dump captured no bookings at all. 35 days matches the horizon used
+                                    //by the GetAttendanceRecord / MyBookings dumps above. The StartDate was also
+                                    //a plain string literal (missing the $), so it was never interpolated.
+                                    var snapshotStart = DateTime.Now.Date;
+                                    var snapshotEnd = snapshotStart.AddDays(35);
+
                                     var post = new
                                     {
                                         CountryId = country.Id,
@@ -826,7 +834,8 @@ namespace libCondeco
                                         ViewType = 2,
                                         LanguageId = 1,
                                         ResourceType = resId,
-                                        StartDate = "{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}"
+                                        StartDate = $"{snapshotStart:yyyy-MM-ddTHH:mm:ss}",
+                                        EndDate = $"{snapshotEnd:yyyy-MM-ddTHH:mm:ss}"
                                     };
                                     var postStr = post.ToJson();
 
