@@ -1,0 +1,130 @@
+# .github/workflows/docker-publish.yml
+#
+# Triggers:
+#   • Automatically when a new GitHub Release is published (the upstream
+#     release workflow already builds the binaries, so this runs after it).
+#   • Manually via workflow_dispatch for testing / re-builds.
+#
+# What it does:
+#   1. Downloads the Linux binary from the newly-published release assets.
+#   2. Builds a Docker image with that binary embedded.
+#   3. Pushes the image to GitHub Container Registry (ghcr.io) tagged with
+#      both the release version (e.g. v1.6.0) and `latest`.
+
+name: Build & Publish Docker Image
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build from (e.g. v1.6.0)"
+        required: true
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # e.g. fiddyschmitt/condeco-cli
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    # Required to push to GHCR and to read release assets
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout (only needed for the Dockerfile)
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Resolve the release tag we want to package
+      #    • On a `release` event   → use the tag that triggered the workflow
+      #    • On `workflow_dispatch` → use the manually supplied input
+      # -----------------------------------------------------------------------
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3. Download the Linux binary from the GitHub Release
+      #    The asset is expected to be named  condeco-cli-linux-x64  or similar
+      # -----------------------------------------------------------------------
+      - name: Download Linux binary from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          ASSET_NAME="condeco-cli-linux-x64"
+
+          echo "Downloading: $ASSET_URL"
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "$ASSET_NAME" \
+            --dir ./docker-context/
+
+          # Rename whatever we downloaded to the fixed name the Dockerfile expects
+          mv "./docker-context/$ASSET_NAME" ./docker-context/condeco-cli
+          chmod +x ./docker-context/condeco-cli
+
+      # -----------------------------------------------------------------------
+      # 4. Copy the Dockerfile into the build context
+      # -----------------------------------------------------------------------
+      - name: Prepare Docker build context
+        run: cp Dockerfile docker-context/Dockerfile
+
+      # -----------------------------------------------------------------------
+      # 5. Log in to GHCR
+      # -----------------------------------------------------------------------
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # 6. Generate image tags & labels
+      # -----------------------------------------------------------------------
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.value }}
+            type=raw,value=latest
+
+      # -----------------------------------------------------------------------
+      # 7. Set up Buildx
+      # -----------------------------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # -----------------------------------------------------------------------
+      # 8. Build and push
+      # -----------------------------------------------------------------------
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker-context
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Build only for amd64 since the upstream binary targets linux-x64.
+          # Add linux/arm64 if you ever publish an arm64 binary.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
