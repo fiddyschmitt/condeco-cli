@@ -28,6 +28,9 @@ namespace libCondeco.Web
 
             HttpMessageHandler handler = new RateLimitedHandler(limiter, innerHandler);
 
+            //Retries transient transport failures; outside rate-limiting so each retry re-acquires a permit.
+            handler = new RetryHandler(handler);
+
             //Outermost so its retry re-flows through rate-limiting + logging, and the re-login's own
             //traffic (issued via this same client) passes back through here and is exempted.
             if (reLogin != null)
