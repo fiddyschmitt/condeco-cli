@@ -192,7 +192,21 @@ namespace libCondeco
 
             try
             {
-                var bookingResponse = client.PostAsync("/webapi/BookingService/SaveDeskBooking", content).Result;
+                var request = new HttpRequestMessage(HttpMethod.Post, "/webapi/BookingService/SaveDeskBooking")
+                {
+                    Content = content
+                };
+
+                //Since the 11-Jul-2026 server release, SaveDeskBooking requires the AccessToken (12-hour)
+                //bearer rather than the default EliteSession (15-minute) bearer, which the server now
+                //rejects with a 401. Override the Authorization for this request only.
+                var accessToken = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["AccessToken"]?.Value;
+                if (accessToken != null)
+                {
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+                }
+
+                var bookingResponse = client.SendAsync(request).Result;
                 bookingResponseStr = bookingResponse.Content.ReadAsStringAsync().Result;
 
                 bookingResponseStr = bookingResponseStr
