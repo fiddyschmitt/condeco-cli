@@ -18,7 +18,12 @@ namespace libCondeco.Web
     //re-sending could mis-book.
     public class ReAuthHandler : DelegatingHandler
     {
-        readonly SemaphoreSlim reAuthLock = new(1, 1);
+        //Guards reAuthTask. The re-login itself runs on a shared Task so that waiters can honour
+        //their own cancellation tokens (a request's per-call timeout must not be extended by an
+        //arbitrarily slow login.aspx); a waiter that gives up leaves the login running for the
+        //benefit of everyone else.
+        readonly object reAuthGate = new();
+        Task<string?>? reAuthTask;
 
         //Marks the requests issued by the re-login itself (login.aspx, the token exchange, the
         //post-login API calls) so they are never treated as a trigger for another re-login. AsyncLocal
@@ -56,7 +61,7 @@ namespace libCondeco.Web
                 return response;
             }
 
-            var bearer = ReAuthenticate(versionBeforeSend);
+            var bearer = ReAuthenticate(versionBeforeSend, cancellationToken);
             if (bearer == null || request.Method != HttpMethod.Get)
             {
                 return response;
@@ -81,7 +86,7 @@ namespace libCondeco.Web
                 return response;
             }
 
-            var bearer = ReAuthenticate(versionBeforeSend);
+            var bearer = ReAuthenticate(versionBeforeSend, cancellationToken);
             if (bearer == null || request.Method != HttpMethod.Get)
             {
                 return response;
@@ -92,18 +97,41 @@ namespace libCondeco.Web
         }
 
         //Single-flight re-login. Returns the current valid bearer (freshly minted here, or the one a
-        //concurrent caller just minted), or null if re-login failed.
-        string? ReAuthenticate(int versionBeforeSend)
+        //concurrent caller just minted), or null if re-login failed. Honours the caller's cancellation
+        //token while WAITING: at the rollover the login itself can hang for minutes on the overloaded
+        //server, and a request's per-call timeout must not be extended by that. A cancelled waiter
+        //throws OperationCanceledException (its request fails like any timeout and is retried by the
+        //caller's loop); the login keeps running in the background and later requests pick up its token.
+        string? ReAuthenticate(int versionBeforeSend, CancellationToken cancellationToken)
         {
-            reAuthLock.Wait();
-            try
+            Task<string?> loginTask;
+            lock (reAuthGate)
             {
-                //Someone else already re-logged in while we waited for the lock - reuse their token.
+                //Someone else already re-logged in since this request was sent - reuse their token.
                 if (Volatile.Read(ref authVersion) != versionBeforeSend)
                 {
                     return currentBearer;
                 }
 
+                //Run the login on a dedicated (LongRunning) thread, not the thread pool: at the storm
+                //dozens of confirmation reads are already blocking pool threads (sync-over-async .Result,
+                //then this Wait), so a pool-queued login could sit behind them until the pool grows a
+                //thread. A dedicated thread lets the re-login start immediately - the whole point is to
+                //minimise re-login latency during the storm.
+                reAuthTask ??= Task.Factory.StartNew(RunReLogin, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                loginTask = reAuthTask;
+            }
+
+            //Throws OperationCanceledException if the caller's token fires first.
+            loginTask.Wait(cancellationToken);
+            return loginTask.Result;
+        }
+
+        //The actual re-login, run once per expiry no matter how many requests are waiting on it.
+        string? RunReLogin()
+        {
+            try
+            {
                 reAuthInProgress.Value = true;
                 string? bearer;
                 try
@@ -124,7 +152,10 @@ namespace libCondeco.Web
             }
             finally
             {
-                reAuthLock.Release();
+                lock (reAuthGate)
+                {
+                    reAuthTask = null;
+                }
             }
         }
 

@@ -197,7 +197,7 @@ namespace libCondeco
             return result;
         }
 
-        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null, CancellationToken cancellationToken = default)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
@@ -239,7 +239,18 @@ namespace libCondeco
                 post.Headers.Add("X-Booking-Tag", tag);
             }
 
-            var result = client.SendAsync(post);
+            //The SaveDeskBooking write endpoint requires the AccessToken (12-hour) bearer, not the global
+            //EliteSession (15-minute Forms) bearer the client sends by default. Since the 11-Jul-2026
+            //server release the EliteSession bearer is rejected here with 401 (confirmed by diffing a
+            //working browser booking against ours). Override the Authorization for this one request; the
+            //reads keep the EliteSession default. As a bonus the AccessToken lasts the whole run.
+            var accessToken = clientHandler.CookieContainer.GetCookies(new Uri(BaseUrl))?["AccessToken"]?.Value;
+            if (accessToken != null)
+            {
+                post.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            }
+
+            var result = client.SendAsync(post, cancellationToken);
             return result;
         }
 
@@ -323,7 +334,7 @@ namespace libCondeco
             }
         }
 
-        public UpComingBookingsResponse GetUpcomingBookingsResp(DateOnly? fromDate = null, DateOnly? toDate = null)
+        public UpComingBookingsResponse GetUpcomingBookingsResp(DateOnly? fromDate = null, DateOnly? toDate = null, CancellationToken cancellationToken = default)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
 
@@ -331,7 +342,7 @@ namespace libCondeco
             toDate ??= fromDate;
 
             var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={fromDate.Value.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={toDate.Value:yyyy-MM-dd} 13:59:59";
-            var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl).Result;
+            var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl, cancellationToken).Result;
 
             var result = UpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
             return result;
@@ -339,7 +350,12 @@ namespace libCondeco
 
         public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
-            var upComingBookings = GetUpcomingBookingsResp(fromDate, toDate);
+            return GetUpcomingBookings(fromDate, toDate, default);
+        }
+
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+        {
+            var upComingBookings = GetUpcomingBookingsResp(fromDate, toDate, cancellationToken);
 
             var result = upComingBookings
                             .UpComingBookings
@@ -566,9 +582,9 @@ namespace libCondeco
             return result;
         }
 
-        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor)
+        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor, CancellationToken cancellationToken = default)
         {
-            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate);
+            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate, cancellationToken);
 
             var successful = bookings
                                 .Where(b => b.DeskId == room.RoomId)

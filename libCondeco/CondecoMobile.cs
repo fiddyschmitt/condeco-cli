@@ -819,7 +819,7 @@ namespace libCondeco
             return result;
         }
 
-        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null)
+        public Task<HttpResponseMessage> SendBookingRequest(Room room, List<DateOnly> dates, BookFor? bookForUser, string? tag = null, CancellationToken cancellationToken = default)
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
             if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
@@ -847,7 +847,7 @@ namespace libCondeco
                 request.Headers.Add("X-Booking-Tag", tag);
             }
 
-            var result = client.SendAsync(request);
+            var result = client.SendAsync(request, cancellationToken);
             return result;
         }
 
@@ -923,6 +923,11 @@ namespace libCondeco
 
         public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
+            return GetUpcomingBookings(fromDate, toDate, default);
+        }
+
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+        {
             var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
 
             fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
@@ -934,7 +939,7 @@ namespace libCondeco
 
             var url = $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={deskStartDateStr}&deskEndDate={deskEndDateStr}&roomStartDate={roomStartDateStr}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0";
 
-            var listResultsStr = client.GetStringAsync(url).Result;
+            var listResultsStr = client.GetStringAsync(url, cancellationToken).Result;
 
             var listResults = listResultsStr.ToObject<ListV2Response>();
 
@@ -962,9 +967,9 @@ namespace libCondeco
             return result;
         }
 
-        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor)
+        public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor, CancellationToken cancellationToken = default)
         {
-            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate);
+            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate, cancellationToken);
             var userId = GetUserId();
 
             var successful = bookings
