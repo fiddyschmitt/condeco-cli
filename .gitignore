@@ -366,3 +366,6 @@ FodyWeavers.xsd
 
 # Local research / reverse-engineering notes (not for commit)
 /research/
+
+# Local deployment staging (built binaries copied here before pushing to C:\Portable)
+/_deploy/
