@@ -187,6 +187,11 @@ namespace condeco_cli
 
 
 
+            //Tell the API which groups we're going to book in before asking for the booking window: the
+            //advance-booking period is a per-group setting, and the mobile API can only infer the window
+            //from it.
+            condeco.SetBookingScope(config.Bookings.Select(booking => (booking.Location, booking.Group)));
+
             var startBookingFrom = condeco.GetBookingWindowStartDate();
             var bookUntil = condeco.GetBookingWindowEndDate();
 
@@ -336,7 +341,12 @@ namespace condeco_cli
                             var bookingWindowStartDate = StartDate;
                             var bookingWindowEndDate = EndDate;
 
-                            if (originalEndDate != bookingWindowEndDate)
+                            //Only an end date that moved FORWARD is the real new window. Under the rollover
+                            //storm the server can return degraded desk settings with missing or nonsense
+                            //dates (13-Jul-2026: the window "shrank" from [13/7 - 24/7] to [13/7 - 13/7],
+                            //which pruned every task and ended the run with nothing booked). Anything that
+                            //is not an expansion is treated as a bad read and polling continues.
+                            if (bookingWindowEndDate > originalEndDate)
                             {
                                 Console.WriteLine($"{DateTime.Now}  The new booking window is now available.");
                                 Console.WriteLine($"{DateTime.Now}  It changed from [{originalStartDate} - {originalEndDate}] to [{bookingWindowStartDate} - {bookingWindowEndDate}]");
@@ -349,7 +359,7 @@ namespace condeco_cli
 
                                 Console.WriteLine($"{DateTime.Now}  Pruning {notRequired.Count:N0} tasks which are not required.");
                                 notRequired
-                                    .ForEach(bookingTask => bookingTask.Result.Status = BookingTaskStatus.NotRequired);
+                                    .ForEach(bookingTask => bookingTask.MarkNotRequired());
 
                                 var totalBookings = bookingGroups
                                                         .Sum(grp => grp.Count);
@@ -357,6 +367,10 @@ namespace condeco_cli
                                 Console.WriteLine($"{DateTime.Now}  {totalBookings - notRequired.Count:N0} tasks remain.");
 
                                 break;
+                            }
+                            else if (bookingWindowEndDate != originalEndDate)
+                            {
+                                Console.WriteLine($"{DateTime.Now}  Ignoring implausible booking window [{bookingWindowStartDate} - {bookingWindowEndDate}] - the end date did not move forward, so this is likely a degraded server response.");
                             }
                         }
                         catch (Exception ex)
@@ -398,20 +412,67 @@ namespace condeco_cli
 
                         Console.WriteLine($"{DateTime.Now}  Rollover window: earliest in {earliestSleep.TotalSeconds:N2}s, latest in {latestSleep.TotalSeconds:N2}s (uncertainty: {(latestSleep - earliestSleep).TotalSeconds:N2}s)");
 
-                        var rangeBookingTasks = bookingGroups
+                        //Every task races, including single-day ones. (An older filter limited this to
+                        //multi-day tasks, a leftover from when the speculative fire was a range request.)
+                        var speculativeBookingTasks = bookingGroups
                             .SelectMany(bg => bg)
-                            .Where(bt => bt.Dates.Count > 1)
                             .ToList();
 
                         if (earliestSleep > TimeSpan.Zero)
                             Thread.Sleep(earliestSleep);
 
-                        Console.WriteLine($"{DateTime.Now}  Earliest rollover reached. Firing {rangeBookingTasks.Count:N0} range {"booking".Pluralize(rangeBookingTasks.Count)}.");
-                        foreach (var bt in rangeBookingTasks)
+                        var speculativeDayCount = speculativeBookingTasks.Sum(bt => bt.Dates.Count);
+                        Console.WriteLine($"{DateTime.Now}  Earliest rollover reached. Firing {speculativeDayCount:N0} speculative day {"booking".Pluralize(speculativeDayCount)} per volley.");
+
+                        //Three rapid fire-and-forget volleys, one second apart, on their own task so they
+                        //neither block this waiter (StartBooking must begin at the calculated rollover
+                        //moment) nor wait for responses (a hanging server can't delay the next volley).
+                        //The rollover is a race decided in the opening seconds (on 6-Jul-2026 a rival bot
+                        //took a contested day within ~6 booking ids of ours), and the volley spread also
+                        //covers the clock-uncertainty window between the earliest and latest possible
+                        //rollover. BookingTask's confirm-and-repair loop takes over moments later.
+                        Task.Factory.StartNew(() =>
                         {
-                            Console.WriteLine($"{DateTime.Now}  [{bt}]  Sending range booking request");
-                            condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor, tag: "speculative");
-                        }
+                            try
+                            {
+                                const int SPECULATIVE_VOLLEYS = 3;
+                                for (var volley = 1; volley <= SPECULATIVE_VOLLEYS; volley++)
+                                {
+                                    Console.WriteLine($"{DateTime.Now}  Firing speculative volley {volley} of {SPECULATIVE_VOLLEYS}.");
+                                    foreach (var bt in speculativeBookingTasks)
+                                    {
+                                        //No longer sent as a range: the server treats a range as
+                                        //all-or-nothing, so a rival grabbing a single day refuses the whole
+                                        //range (observed 6-Jul-2026). Individual days mean a contested day
+                                        //costs only that day.
+                                        //condeco.SendBookingRequest(bt.Room, bt.Dates, bt.Booking.BookFor, tag: "speculative");
+
+                                        foreach (var date in bt.Dates)
+                                        {
+                                            //An earlier volley already landed this day, so don't pile a
+                                            //duplicate concurrent write onto it. Racing writes for the same
+                                            //day are the leading suspect behind bookings that confirm and
+                                            //then vanish (3-Aug-2026).
+                                            if (bt.WriteReportedAsBooked(date))
+                                            {
+                                                continue;
+                                            }
+
+                                            _ = SendSpeculativeBooking(condeco, bt, date);
+                                        }
+                                    }
+
+                                    if (volley < SPECULATIVE_VOLLEYS)
+                                    {
+                                        Thread.Sleep(1_000);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"{DateTime.Now}  Error while firing speculative volleys: {ex.Message}.");
+                            }
+                        }, TaskCreationOptions.LongRunning);
 
                         var remainingSleep = latestSleep - earliestSleep;
                         if (remainingSleep > TimeSpan.Zero)
@@ -452,8 +513,6 @@ namespace condeco_cli
             {
                 try
                 {
-                    bookingTask.StartChecking();
-
                     var bookingDescription = bookingTask.ToString();
 
                     while (bookingTask.Result.Status == BookingTaskStatus.InProgress)
@@ -461,6 +520,17 @@ namespace condeco_cli
                         if (stopAt.HasValue && DateTime.Now > stopAt)
                         {
                             Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  Waited for {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes ?? 1)} but booking is still in progress. Exiting.");
+
+                            //This cap can fire a couple of minutes before the tasks' own timeouts (it
+                            //starts ticking when the wait begins, ~23:58, not at the rollover), and this is
+                            //the run's last output - so report EVERY task, not just this one: others may
+                            //have already succeeded or hold partial confirmations.
+                            foreach (var task in bookingTasks)
+                            {
+                                ReportFinalStatus(task);
+                            }
+
+                            TryLogOut(condeco);
                             Environment.Exit(1);
                         }
 
@@ -487,7 +557,7 @@ namespace condeco_cli
 
                             case BookingTaskStatus.BookingTimedOut:
                                 Console.ForegroundColor = ConsoleColor.Yellow;
-                                Console.WriteLine(DescribeUnconfirmed(res.Outcome, duration));
+                                Console.WriteLine(DescribeUnconfirmed(bookingTask));
                                 Console.ForegroundColor = OriginalConsoleColour;
                                 break;
                         }
@@ -499,43 +569,120 @@ namespace condeco_cli
                 }
             }
 
-            condeco.LogOut();
+            //Every booking task has reached a terminal state (the monitor loop above only exits a task's
+            //wait on Success/TimedOut/NotRequired). This line is the clean-finish marker: unlike the
+            //wait-cap and error exits, reaching here means we ran the whole process to completion, so its
+            //presence in booking.log is the signal that the run wasn't killed or timed out mid-flight.
+            Console.WriteLine($"{DateTime.Now}  Booking process complete. Exiting.");
+
+            TryLogOut(condeco);
 
             TryAutoUpdate(config);
         }
 
-        //A booking task that ends without a positive confirmation used to print a bare "Timed out", which
-        //reads as failure. At the midnight rollover the server routinely 500s while still creating the
-        //booking (a parallel task booking the same range often confirms fine), so that label was misleading.
-        //Say what actually happened: surface the server's last response and let the reader judge.
-        static string DescribeUnconfirmed(string outcome, TimeSpan duration)
+        //A booking task that ends without full confirmation isn't necessarily a failure. At the midnight
+        //rollover the server routinely 500s the write while still creating the booking, and the read path
+        //can lag the write by tens of minutes, so "unconfirmed" usually means "probably booked, just not
+        //verifiable in time". Report what we actually know - how many days we confirmed and how hard we
+        //tried - instead of a bare "Timed out".
+        static string DescribeUnconfirmed(BookingTask task)
         {
+            var res = task.Result;
+
+            //Snapshot the confirmed-days list once: the booking loop reassigns Result.ConfirmedDates to a
+            //fresh list every round, and this can run (via the wait-cap path) while a task is still in
+            //progress. Reading the reference twice could otherwise mix a count from one round with a
+            //membership test from another and print a self-contradictory line.
+            var confirmedDates = res.ConfirmedDates;
+
+            //AttemptsFinished is still unset when this is called for a task that's in progress (the
+            //monitor cap fired before the task's own timeout).
+            var finishedAt = res.AttemptsFinished == default ? DateTime.Now : res.AttemptsFinished;
+            var duration = finishedAt - res.AttemptsStarted;
             var withinTime = $"not verified within {duration.TotalSeconds:N0}s";
 
-            var cleaned = (outcome ?? string.Empty)
-                .Replace("\"", "")
-                .Replace("\\n", "")
-                .Trim();
+            var totalDays = task.Dates.Count;
+            var confirmedDays = confirmedDates.Count;
+            var roundsWord = "round".Pluralize(res.RoundsAttempted);
 
-            //Same success heuristic the range-confirmation used: a bare booking id (web) or ResponseCode 100 (mobile).
-            if (int.TryParse(cleaned, out _) || cleaned.Contains("ResponseCode:100"))
+            if (confirmedDays == 0)
             {
-                return $"Booked — request accepted, but confirmation was {withinTime}";
+                return $"Unconfirmed — 0/{totalDays} day(s) confirmed after {res.RoundsAttempted} submit {roundsWord}; {withinTime}. The booking may still have landed";
             }
 
-            if (cleaned.Length == 0)
+            var unconfirmedDates = task.Dates
+                                        .Where(date => !confirmedDates.Contains(date))
+                                        .Select(date => date.ToString("dd/MM/yyyy"))
+                                        .ToList();
+            var unconfirmedStr = string.Join(", ", unconfirmedDates);
+
+            return $"Partially confirmed — {confirmedDays}/{totalDays} day(s) confirmed after {res.RoundsAttempted} submit {roundsWord}; {unconfirmedStr} still unconfirmed ({withinTime}, may still have landed)";
+        }
+
+        //One line summarising where a booking task ended up. Used when the run is cut short and the
+        //normal per-task completion reporting won't get a chance to run.
+        static void ReportFinalStatus(BookingTask task)
+        {
+            var description = task.ToString();
+
+            switch (task.Result.Status)
             {
-                return $"Unconfirmed — no server response captured; {withinTime}. Desk may still be booked";
+                case BookingTaskStatus.BookingSuccessful:
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"{description}: Success");
+                    break;
+
+                case BookingTaskStatus.NotRequired:
+                    Console.WriteLine($"{description}: Not required");
+                    break;
+
+                case BookingTaskStatus.NotStarted:
+                    Console.WriteLine($"{description}: Not started");
+                    break;
+
+                default:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"{description}: {DescribeUnconfirmed(task)}");
+                    break;
             }
 
-            if (cleaned.Contains("500") || cleaned.Contains("timed out", StringComparison.OrdinalIgnoreCase))
-            {
-                return $"Unconfirmed — server returned HTTP 500 at rollover (the booking often still succeeds); {withinTime}";
-            }
+            Console.ForegroundColor = OriginalConsoleColour;
+        }
 
-            //Surface whatever the server actually said so a genuine rejection (e.g. desk already taken) is visible.
-            var summary = cleaned.Length > 160 ? string.Concat(cleaned.AsSpan(0, 160), "…") : cleaned;
-            return $"Unconfirmed — {withinTime}; last server response: {summary}";
+        //Fires one best-effort speculative booking write and discards the response. Bounded by its own
+        //timeout and disposed, so hung requests can't pin pooled connections during the seconds that
+        //decide the rollover race - BookingTask's loop, which starts moments later, is the reliable path
+        //that re-submits every unconfirmed day.
+        static async Task SendSpeculativeBooking(ICondeco condeco, BookingTask bookingTask, DateOnly date)
+        {
+            using var timeoutSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            try
+            {
+                using var response = await condeco.SendBookingRequest(bookingTask.Room, [date], bookingTask.Booking.BookFor, tag: "speculative", cancellationToken: timeoutSource.Token);
+
+                //Tell the task what the server said, so the remaining volleys skip a day this one booked.
+                var responseBody = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+                bookingTask.NoteWriteResponse(date, responseBody);
+            }
+            catch
+            {
+                //Best-effort by design.
+            }
+        }
+
+        //A logout that times out (e.g. the server is still overloaded at the rollover) must never crash a
+        //run that has already done its booking, nor skip the post-run update check. Log it and carry on.
+        static void TryLogOut(ICondeco condeco)
+        {
+            try
+            {
+                condeco.LogOut();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{DateTime.Now}  Error during logout (ignored): {ex.Message}");
+            }
         }
 
         static void RunCheckIn(BaseOptions opts)
@@ -608,7 +755,7 @@ namespace condeco_cli
                     });
             }
 
-            condeco.LogOut();
+            TryLogOut(condeco);
 
             TryAutoUpdate(config);
         }
@@ -677,7 +824,21 @@ namespace condeco_cli
 
             if (options.API == EnumAPI.mobile)
             {
-                result = new CondecoMobile(httpClientFactory, condecoCliConfig.Account.BaseUrl);
+                var mobile = new CondecoMobile(httpClientFactory, condecoCliConfig.Account.BaseUrl);
+
+                if (!string.IsNullOrEmpty(condecoCliConfig.Account.Username))
+                {
+                    //The mobile API cannot report the real booking window (its advance-period settings
+                    //are decorative, not enforced), so pair it with a web session that reads the true
+                    //window from the grid. Only possible for username/password accounts - SSO/token
+                    //accounts stay pure mobile because the web API cannot log in with a token.
+                    var webForWindow = new CondecoWeb(httpClientFactory, condecoCliConfig.Account.BaseUrl);
+                    result = new CondecoHybrid(mobile, webForWindow);
+                }
+                else
+                {
+                    result = mobile;
+                }
             }
 
             if (result == null) throw new Exception($"API not supported: {options.API}");
