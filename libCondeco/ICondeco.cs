@@ -34,6 +34,14 @@ namespace libCondeco
         public List<Colleague> FindColleague(string searchTerm);
 
         //booking related
+
+        //Declares the location/group pairs the caller intends to book, before the booking window is read.
+        //The mobile API has no server-provided booking window, so it must compute one from a group's
+        //advance-booking period - and those periods differ per group. Without this hint it has to guess
+        //(it used the tenant's default group, whose period can be shorter than the booked group's, which
+        //silently drops the newly-opened week). Ignored by implementations that read a real window.
+        public void SetBookingScope(IEnumerable<(string LocationName, string GroupName)> scope);
+
         public DayOfWeek GetRolloverDay();
         public DateTime GetBookingWindowStartDate();
         public DateTime GetBookingWindowEndDate();

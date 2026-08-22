@@ -25,6 +25,11 @@ namespace libCondeco
         LoginInformationsV2Response? loginInfo;
         bool loginSuccessful = false;
 
+        //The (locationId, groupId) pairs the caller intends to book, and a cache of their settings. Both
+        //feed GetBookingWindowEndDate, which the mobile API forces us to compute rather than read.
+        readonly List<(int, int)> bookingScope = [];
+        readonly Dictionary<(int, int), GroupSettingsWithRestrictions> groupSettingsCache = [];
+
         public string BaseUrl { get; }
 
         public CondecoMobile(IHttpClientFactory httpClientFactory, string baseUrl)
@@ -771,27 +776,91 @@ namespace libCondeco
             return DateTime.Now.Date;
         }
 
+        //Resolves the caller's intended location/group names to ids, so the booking window can be derived
+        //from the groups actually being booked. Names that don't resolve are skipped; if none resolve the
+        //window falls back to the tenant default (see GetBookingWindowEndDate).
+        public void SetBookingScope(IEnumerable<(string LocationName, string GroupName)> scope)
+        {
+            bookingScope.Clear();
+
+            var countries = GetCountries();
+
+            foreach (var (locationName, groupName) in scope)
+            {
+                var location = countries
+                                .SelectMany(country => country.Locations)
+                                .FirstOrDefault(location => location.Name.Equals(locationName, StringComparison.OrdinalIgnoreCase));
+
+                var group = location?
+                                .Groups
+                                .FirstOrDefault(group => group.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase));
+
+                if (location == null || group == null)
+                {
+                    continue;
+                }
+
+                var key = (location.Id, group.Id);
+                if (!bookingScope.Contains(key))
+                {
+                    bookingScope.Add(key);
+                }
+            }
+        }
+
+        //Group settings are static for the life of the run, but GetBookingWindowEndDate is polled once a
+        //second while waiting for the rollover, so cache them rather than re-fetching on every poll.
+        GroupSettingsWithRestrictions GetCachedGroupSettings(int locationId, int groupId)
+        {
+            var key = (locationId, groupId);
+
+            if (!groupSettingsCache.TryGetValue(key, out var groupSettings))
+            {
+                groupSettings = GetGroupSettings(locationId, groupId);
+                groupSettingsCache[key] = groupSettings;
+            }
+
+            return groupSettings;
+        }
+
         public DateTime GetBookingWindowEndDate()
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
             if (loginInfo == null) throw new Exception($"{nameof(loginInfo)} not yet retrieved.");
 
-            var groupSettings = GetGroupSettings(loginInfo.DeskResults.DefaultSettings.DefaultLocation, loginInfo.DeskResults.DefaultSettings.DefaultGroup);
+            //The advance-booking period is per group, so use the groups we were told we'd book in. Using
+            //the tenant default instead can be a week short of the group's real horizon, in which case no
+            //task is ever prepared for the week that just opened and the run silently books nothing.
+            var groups = bookingScope.Count > 0
+                            ? bookingScope
+                            : [(loginInfo.DeskResults.DefaultSettings.DefaultLocation, loginInfo.DeskResults.DefaultSettings.DefaultGroup)];
 
             // WeekStart is the first day of the booking week (ISO-8601: 1=Mon .. 7=Sun)
             var weekStart = (DayOfWeek)(loginInfo.DeskResults.SystemSettings.WeekStart % 7);
-
-            var periodDays = groupSettings.advancePeriodValue;
-            if (groupSettings.advancePeriodUnit == 1)
-                periodDays *= 7;
-
             var weekBoundary = DateTime.Now.Date.StartOfWeek(weekStart);
-            var result = weekBoundary.AddDays(periodDays);
 
-            if (groupSettings.includeWeekend)
-                result = result.AddDays(-1);
-            else
-                result = result.AddDays(-3);
+            //Where several groups are in play they can have different periods; take the furthest, so a
+            //bookable week is never left out. Anything genuinely beyond the server's horizon is refused
+            //and pruned once the real window opens.
+            var result = groups
+                            .Select(group =>
+                            {
+                                var groupSettings = GetCachedGroupSettings(group.Item1, group.Item2);
+
+                                var periodDays = groupSettings.advancePeriodValue;
+                                if (groupSettings.advancePeriodUnit == 1)
+                                    periodDays *= 7;
+
+                                var endDate = weekBoundary.AddDays(periodDays);
+
+                                if (groupSettings.includeWeekend)
+                                    endDate = endDate.AddDays(-1);
+                                else
+                                    endDate = endDate.AddDays(-3);
+
+                                return endDate;
+                            })
+                            .Max();
 
             return result;
         }

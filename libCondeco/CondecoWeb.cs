@@ -970,6 +970,12 @@ namespace libCondeco
                    ?? [];
         }
 
+        //Not needed here: the web API reports the real booking window (desk settings carry explicit
+        //start/end dates), so there is nothing to infer from the caller's intended groups.
+        public void SetBookingScope(IEnumerable<(string LocationName, string GroupName)> scope)
+        {
+        }
+
         public DayOfWeek GetRolloverDay()
         {
             if (!loginSuccessful) throw new Exception($"Not yet logged in.");
