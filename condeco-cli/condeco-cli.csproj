@@ -17,4 +17,17 @@
     <ProjectReference Include="..\libCondeco\libCondeco.csproj" />
   </ItemGroup>
 
+  <!-- Keep trimmed publishes working. CommandLineParser reflects over the options type, and
+       Newtonsoft.Json (de)serialises the config and every API model; the trimmer can't see those
+       reflective uses and strips the members (which broke arg parsing with "BaseOptions appears to be
+       immutable, but no constructor found"). Rooting these assemblies preserves their members in full
+       while the framework - the bulk of the size - is still trimmed. -->
+  <ItemGroup Condition="'$(PublishTrimmed)' == 'true'">
+    <TrimmerRootAssembly Include="condeco-cli" />
+    <TrimmerRootAssembly Include="libCondeco" />
+    <TrimmerRootAssembly Include="CommandLine" />
+    <TrimmerRootAssembly Include="Newtonsoft.Json" />
+    <TrimmerRootAssembly Include="Spectre.Console" />
+  </ItemGroup>
+
 </Project>
