@@ -341,7 +341,10 @@ namespace libCondeco
             fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
             toDate ??= fromDate;
 
-            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={fromDate.Value.AddDays(-1):yyyy-MM-dd} 14:00:00&endDateTime={toDate.Value:yyyy-MM-dd} 13:59:59";
+            var startDateStr = fromDate.Value.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var endDateStr = toDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            var getUpcomingBookingsUrl = $"/EnterpriseLite/api/Booking/GetUpComingBookings?startDateTime={startDateStr} 14:00:00&endDateTime={endDateStr} 13:59:59";
             var upcomingBookingsJsonArrayStr = client.GetStringAsync(getUpcomingBookingsUrl, cancellationToken).Result;
 
             var result = UpComingBookingsResponse.FromServerResponse(upcomingBookingsJsonArrayStr);
@@ -525,7 +528,7 @@ namespace libCondeco
                   "ViewType": 2,
                   "LanguageId": 1,
                   "ResourceType": {{workspaceTypeDefinition.ResourceId}},
-                  "StartDate": "{{DateTime.Now.Date:yyyy-MM-ddTHH:mm:ss}}"
+                  "StartDate": "{{DateTime.Now.Date.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)}}"
                 }
                 """;
             var postContent = new StringContent(postStr, Encoding.UTF8, "application/json");
@@ -570,7 +573,7 @@ namespace libCondeco
                 ViewType = 2,
                 LanguageId = 1,
                 ResourceType = resourceTypeId,
-                StartDate = $"{startDate:yyyy-MM-ddTHH:mm:ss}"
+                StartDate = startDate.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)
             };
             var postStr = post.ToJson();
 
@@ -752,7 +755,7 @@ namespace libCondeco
             GetJson(client, $"/MobileAPI/MobileService.svc/User/LoginInformationsV2?token={userIdLong}&currentDateTime={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&languageId=1&currentCulture=en-US", Path.Combine(outputFolder, "LoginInformationsV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/GetAllRoles?userlongId={userIdLong}&cultureCode=en-US", Path.Combine(outputFolder, "GetAllRoles.json"));
             GetJson(client, $"/MobileAPI/DeskBookingService.svc/GetAttendanceRecord?accessToken={userIdLong}&startDate={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&endDate={DateTime.Now.AddDays(35).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&UserId=-1", Path.Combine(outputFolder, "GetAttendanceRecord.json"));
-            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&deskEndDate={DateTime.Now.AddDays(35).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&roomStartDate={DateTime.Now}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
+            GetJson(client, $"/MobileAPI/MobileService.svc/MyBookings/ListV2?sessionGuid={userIdLong}&languageId=1&deskStartDate={DateTime.Now.AddMonths(-1).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&deskEndDate={DateTime.Now.AddDays(35).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&roomStartDate={DateTime.Now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}&timeZoneID={ianaTimezoneStr}&pageSize=100&pageIndex=0", Path.Combine(outputFolder, "MyBookings_ListV2.json"));
             GetJson(client, $"/MobileAPI/MobileService.svc/team/GetMyTeams?userlongId={userIdLong}", Path.Combine(outputFolder, "GetMyTeams.json"));
 
             GetJson(client, $"/EnterpriseLite/api/Booking/GetAppSetting?accessToken={userIdLong}", Path.Combine(outputFolder, "GetAppSetting.json"));
@@ -850,8 +853,8 @@ namespace libCondeco
                                         ViewType = 2,
                                         LanguageId = 1,
                                         ResourceType = resId,
-                                        StartDate = $"{snapshotStart:yyyy-MM-ddTHH:mm:ss}",
-                                        EndDate = $"{snapshotEnd:yyyy-MM-ddTHH:mm:ss}"
+                                        StartDate = snapshotStart.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
+                                        EndDate = snapshotEnd.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)
                                     };
                                     var postStr = post.ToJson();
 
