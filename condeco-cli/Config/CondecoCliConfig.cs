@@ -6,6 +6,7 @@ using libCondeco.Model.People;
 using libCondeco.Model.Space;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,6 +21,22 @@ namespace condeco_cli.Config
         {
             this.ConfigFilename = ConfigFilename;
             Reload();
+        }
+
+        //Exclude_Dates must mean the same dates on every machine a config file travels to.
+        //DateOnly.Parse uses the machine culture, so "05/08/2026" silently meant 8-May on a
+        //US-locale machine and 5-Aug on an Australian one. Accept only the documented ISO form
+        //plus day-first dd/MM/yyyy, both parsed culture-invariantly.
+        private static readonly string[] ExcludeDateFormats = ["yyyy-MM-dd", "dd/MM/yyyy"];
+
+        private static DateOnly ParseExcludeDate(string dateStr)
+        {
+            if (DateOnly.TryParseExact(dateStr, ExcludeDateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
+            {
+                return result;
+            }
+
+            throw new FormatException($"Invalid Exclude_Dates date: '{dateStr}'. Expected 'yyyy-MM-dd' (e.g. 2026-08-25) or 'dd/MM/yyyy'.");
         }
 
         public Account Account { get; private set; } = new()
@@ -158,8 +175,8 @@ namespace condeco_cli.Config
                                                     var tokens = pair.Split(" - ", StringSplitOptions.None);
                                                     if (tokens.Length < 2)
                                                         throw new FormatException($"Invalid Exclude_Dates entry: '{pair}'. Expected format: 'yyyy-MM-dd - yyyy-MM-dd'.");
-                                                    var fromDate = DateOnly.Parse(tokens[0].Trim());
-                                                    var toDate = DateOnly.Parse(tokens[1].Trim());
+                                                    var fromDate = ParseExcludeDate(tokens[0].Trim());
+                                                    var toDate = ParseExcludeDate(tokens[1].Trim());
                                                     return (fromDate, toDate);
                                                 })
                                                 .ToList();
