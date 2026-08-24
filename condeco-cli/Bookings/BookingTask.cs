@@ -267,7 +267,7 @@ namespace condeco_cli.Bookings
                     //(bounded by requestTimeout), so a struggling server slows the loop down naturally,
                     //and the rollover is a race decided in the opening seconds (on 6-Jul-2026 a rival bot
                     //took a contested day within ~6 booking ids of ours).
-                    var sleepDuration = TimeSpan.FromSeconds(1);
+                    var sleepDuration = TimeSpan.FromSeconds(5);
 
                     //While waiting out the re-check there is nothing to submit or read, so wait it out in
                     //one go rather than spinning through no-op rounds.
