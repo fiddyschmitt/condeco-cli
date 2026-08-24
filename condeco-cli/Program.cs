@@ -384,7 +384,7 @@ namespace condeco_cli
                             }
                         }
 
-                        Thread.Sleep(1000);
+                        Thread.Sleep(5000);
                     }
                 }, TaskCreationOptions.LongRunning);
 
