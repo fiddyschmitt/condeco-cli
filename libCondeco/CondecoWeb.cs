@@ -341,6 +341,13 @@ namespace libCondeco
             fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
             toDate ??= fromDate;
 
+            //The 14:00:00/13:59:59 UTC boundaries hardcode the tenant's AEST(+10) calendar day:
+            //[day-1 14:00Z, day 13:59Z] == [day 00:00, day 23:59] in Brisbane. That makes this
+            //confirmation read machine-timezone-independent (unlike the mobile ListV2 read, which
+            //queries in an explicit timezone and had to be pointed at the desk location's zone) -
+            //but it bakes in an AEST tenant. If this tool is ever pointed at a non-AEST tenant,
+            //derive these boundaries from the location's timezone instead (see
+            //CondecoMobile.GetLocationIanaTimeZone for the resolution pattern).
             var startDateStr = fromDate.Value.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             var endDateStr = toDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
