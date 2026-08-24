@@ -990,14 +990,30 @@ namespace libCondeco
             }
         }
 
+        //The mobile ListV2 endpoint returns booking dates like "24/08/2026 00:00 AM" - dd/MM/yyyy with a
+        //mixed 24-hour + AM/PM time that DateTime.Parse only accepts under some machine cultures (it throws
+        //FormatException on Linux/macOS default cultures, found 24-Aug-2026). Only the calendar date matters
+        //to callers (both confirmation and check-in use .Date), so parse the date token explicitly with the
+        //invariant culture.
+        static DateTime ParseServerBookingDate(string serverDateTime)
+        {
+            var datePart = serverDateTime.Split(' ')[0];
+            return DateTime.ParseExact(datePart, "dd/MM/yyyy", CultureInfo.InvariantCulture);
+        }
+
         public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate = null, DateOnly? toDate = null)
         {
             return GetUpcomingBookings(fromDate, toDate, default);
         }
 
-        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+        public List<UpcomingBooking> GetUpcomingBookings(DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken, string? ianaTimeZoneOverride = null)
         {
-            var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
+            //Confirmation reads must query in the booked desk's LOCATION timezone, not the machine's: the
+            //server filters deskStartDate..deskEndDate in whatever timezone we send, and a desk booked for
+            //the location's calendar day is invisible to a differently-zoned machine's query of that day
+            //(24-Aug-2026: non-AEST users' bookings landed but never confirmed, so the loop re-submitted for
+            //the whole window). Callers that don't care (e.g. check-in) pass null and keep the machine tz.
+            var ianaTimezoneStr = ianaTimeZoneOverride ?? TimeZoneHelper.LocalIana();
 
             fromDate ??= DateOnly.FromDateTime(DateTime.Now.Date);
             toDate ??= fromDate;
@@ -1022,8 +1038,8 @@ namespace libCondeco
                                 BookedLocation = deskBooking.LocationName,
                                 DeskId = deskBooking.DeskID,
                                 BookingTitle = deskBooking.DeskName,
-                                BookingStartDate = DateTime.Parse(deskBooking.BookingStart),
-                                BookingEndDate = DateTime.Parse(deskBooking.BookingEnd),
+                                BookingStartDate = ParseServerBookingDate(deskBooking.BookingStart),
+                                BookingEndDate = ParseServerBookingDate(deskBooking.BookingEnd),
                                 BookingStatus = deskBooking.Status,
                                 CheckInRequired = true,
 
@@ -1036,9 +1052,33 @@ namespace libCondeco
             return result;
         }
 
+        //Resolves a desk location's IANA timezone from the login master data (its TimeZone is a Windows id
+        //like "E. Australia Standard Time"), so confirmation reads query in the desk's own timezone. Returns
+        //null - meaning "fall back to the machine timezone" - if it can't be resolved.
+        string? GetLocationIanaTimeZone(int locationId)
+        {
+            var windowsTimeZone = loginInfo?.DeskResults.MasterData
+                                    .SelectMany(masterData => masterData.LocationsV2)
+                                    .FirstOrDefault(location => location.ID == locationId)?.TimeZone;
+
+            if (string.IsNullOrEmpty(windowsTimeZone))
+            {
+                return null;
+            }
+
+            try
+            {
+                return TimeZoneConverter.TZConvert.WindowsToIana(windowsTimeZone);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public bool BookingSuccessful(Room room, DateOnly bookedForDate, BookFor? bookingFor, CancellationToken cancellationToken = default)
         {
-            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate, cancellationToken);
+            var bookings = GetUpcomingBookings(bookedForDate, bookedForDate, cancellationToken, GetLocationIanaTimeZone(room.LocationId));
             var userId = GetUserId();
 
             var successful = bookings

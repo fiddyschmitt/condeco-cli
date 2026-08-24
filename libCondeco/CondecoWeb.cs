@@ -738,7 +738,7 @@ namespace libCondeco
             outputFolder ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output", "dumps", $"dump {DateTime.Now:yyyy-MM-dd HHmm ss}");
             Directory.CreateDirectory(outputFolder);
 
-            var ianaTimezoneStr = TimeZoneConverter.TZConvert.WindowsToIana(TimeZoneInfo.Local.Id);
+            var ianaTimezoneStr = TimeZoneHelper.LocalIana();
 
             GetJson(client, $"/api/systeminfo", Path.Combine(outputFolder, "systeminfo.json"));
 
