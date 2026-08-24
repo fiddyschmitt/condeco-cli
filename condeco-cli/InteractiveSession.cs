@@ -13,6 +13,7 @@ using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -982,8 +983,12 @@ namespace condeco_cli
                 defaultTime = existing?.Time ?? new TimeOnly(8, 0);
             }
 
-            var timeStr = AnsiConsole.Ask("Run at what time? (HH:mm)", defaultTime.ToString("HH:mm"));
-            var time = TimeOnly.Parse(timeStr);
+            var timeStr = AnsiConsole.Ask("Run at what time? (HH:mm)", defaultTime.ToString("HH:mm", CultureInfo.InvariantCulture));
+
+            //ParseExact rather than Parse: the prompt promises HH:mm, and a culture-sensitive parse
+            //would accept locale-specific separators that the schedulers then mis-serialise.
+            var acceptedTimeFormats = new[] { "HH:mm", "H:mm" };
+            var time = TimeOnly.ParseExact(timeStr, acceptedTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
             return (days, time);
         }

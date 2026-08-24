@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace condeco_cli.Scheduling
@@ -25,6 +26,8 @@ namespace condeco_cli.Scheduling
 
             if (!timeMatch.Success) return null;
 
+            //schtasks prints the start time in the machine's locale format, so the machine-culture
+            //parse here is deliberate - do not make this invariant.
             var time = TimeOnly.Parse(timeMatch.Groups[1].Value.Trim());
 
             string days;
@@ -47,7 +50,7 @@ namespace condeco_cli.Scheduling
         public override void CreateOrUpdate(string taskType, string configSlug, DayOfWeek[]? days, TimeOnly time, string exePath, string args, string logFile)
         {
             var tn = TaskName(taskType, configSlug);
-            var timeStr = time.ToString("HH:mm");
+            var timeStr = time.ToString("HH:mm", CultureInfo.InvariantCulture);
 
             var batFile = Path.ChangeExtension(logFile, ".bat");
             File.WriteAllText(batFile, $"\"{exePath}\" {args} >> \"{logFile}\" 2>&1\r\n");

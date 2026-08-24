@@ -10,6 +10,7 @@ using libCondeco.Model.Common;
 using libCondeco.Model.Space;
 using libCondeco.Web;
 using Spectre.Console;
+using System.Globalization;
 
 namespace condeco_cli
 {
@@ -636,7 +637,7 @@ namespace condeco_cli
 
             var unconfirmedDates = task.Dates
                                         .Where(date => !confirmedDates.Contains(date))
-                                        .Select(date => date.ToString("dd/MM/yyyy"))
+                                        .Select(date => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture))
                                         .ToList();
             var unconfirmedStr = string.Join(", ", unconfirmedDates);
 

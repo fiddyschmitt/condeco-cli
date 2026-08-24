@@ -3,6 +3,7 @@ using libCondeco;
 using libCondeco.Model.Space;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -191,7 +192,7 @@ namespace condeco_cli.Bookings
                             var lost = Dates.Where(date => !stillBooked.Contains(date)).ToList();
                             if (lost.Count > 0)
                             {
-                                var lostStr = string.Join(", ", lost.Select(date => date.ToString("dd/MM/yyyy")));
+                                var lostStr = string.Join(", ", lost.Select(date => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
                                 Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  {lost.Count} confirmed day(s) disappeared after being booked ({lostStr}). Re-booking.");
                             }
 
@@ -449,7 +450,10 @@ namespace condeco_cli.Bookings
 
             var bookingFor = Booking.GetBookingForFullName(condeco);
 
-            var bookingDescription = $"Book {Room.Name} for {bookingFor} on {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}";
+            var fromDateStr = fromDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var toDateStr = toDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+            var bookingDescription = $"Book {Room.Name} for {bookingFor} on {fromDateStr} - {toDateStr}";
 
             return bookingDescription;
         }
