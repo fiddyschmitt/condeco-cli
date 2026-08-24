@@ -325,6 +325,10 @@ namespace condeco_cli
                     //Let's wait for the new booking window
                     Console.WriteLine($"{DateTime.Now}  Will wait a total of {opts.WaitForRolloverMinutes} {"minute".Pluralize(opts.WaitForRolloverMinutes.Value)} for the new booking window.");
 
+                    //Suppresses consecutive identical watch errors so a persistent fault doesn't spam the
+                    //log across a long watch (a group whose rollover moved to the morning can be hours away).
+                    string? lastWatchError = null;
+
                     while (true)
                     {
                         try
@@ -340,6 +344,10 @@ namespace condeco_cli
                             var (StartDate, EndDate) = condeco.GetBookingWindow();
                             var bookingWindowStartDate = StartDate;
                             var bookingWindowEndDate = EndDate;
+
+                            //A successful read clears the error-suppression state, so any later fault is
+                            //logged afresh rather than being swallowed as a "duplicate".
+                            lastWatchError = null;
 
                             //Only an end date that moved FORWARD is the real new window. Under the rollover
                             //storm the server can return degraded desk settings with missing or nonsense
@@ -375,12 +383,28 @@ namespace condeco_cli
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"{DateTime.Now}  Error while waiting for new booking window details: {ex}.");
-
+                            string message;
                             if (SessionExpiredException.IsSessionExpired(ex))
                             {
-                                Console.WriteLine($"{DateTime.Now}  Session expired. Stopping window detection.");
-                                break;
+                                //The window read (GetGridSettings) is a POST. ReAuthHandler re-authenticates
+                                //on the 401 but only replays GETs, so the 401 surfaces here even though the
+                                //session has just been refreshed - the next poll will use it. Keep watching:
+                                //stopping at the ~15-minute session cliff (as this used to) means never
+                                //detecting a window that opens later, which is exactly what happens now that
+                                //a group's rollover can land in the morning rather than at midnight.
+                                message = "Session expired while watching for the new booking window; re-authenticated, continuing to watch.";
+                            }
+                            else
+                            {
+                                //Any other error (transient transport, degraded server) is also retried -
+                                //the watcher must survive until the window opens or the overall wait elapses.
+                                message = $"Error while watching for the new booking window (will retry): {ex.Message}";
+                            }
+
+                            if (message != lastWatchError)
+                            {
+                                Console.WriteLine($"{DateTime.Now}  {message}");
+                                lastWatchError = message;
                             }
                         }
 
