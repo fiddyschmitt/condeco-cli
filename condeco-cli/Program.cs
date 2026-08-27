@@ -179,13 +179,13 @@ namespace condeco_cli
             }
         }
 
-        //The initial booking-window read runs once, before the rollover-wait watcher starts. Like the
-        //watcher's read it calls GetGrid (a POST), which can throw on a timed-out/canceled request - an
-        //unhandled AggregateException crashed the whole run this way in 1.6.x - or surface a 401 that the
-        //ReAuthHandler refreshed but (being a POST) could not replay. Retry a few times so a single blip
-        //doesn't abort the night; if it still can't be read, terminate with a message rather than a stack
-        //trace. The watcher in RunAutoBook has the same resilience for the ongoing polling.
-        static (DateTime StartDate, DateTime EndDate) ReadBookingWindowWithRetries(ICondeco condeco)
+        //Runs a blocking API read with a few retries. A blocking call (.Result/.Wait()) surfaces a
+        //timed-out, canceled, or transient failure as an AggregateException, which - unhandled - crashed
+        //whole runs in 1.6.x (the booking-window read, the check-in read). Retry a few times, and on
+        //exhaustion terminate with the unwound root-cause message rather than an AggregateException stack
+        //trace. Use for the reads a scheduled run cannot proceed without; the rollover watcher in
+        //RunAutoBook has its own equivalent retry for the ongoing polling.
+        static T ReadWithRetries<T>(Func<T> read, string description)
         {
             const int maxAttempts = 5;
             var retryDelay = TimeSpan.FromSeconds(5);
@@ -194,16 +194,16 @@ namespace condeco_cli
             {
                 try
                 {
-                    return condeco.GetBookingWindow();
+                    return read();
                 }
                 catch (Exception ex) when (attempt < maxAttempts)
                 {
-                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window (attempt {attempt} of {maxAttempts}, will retry): {ex.Unwrap().Message}");
+                    Console.WriteLine($"{DateTime.Now}  Could not {description} (attempt {attempt} of {maxAttempts}, will retry): {ex.Unwrap().Message}");
                     Thread.Sleep(retryDelay);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window after {maxAttempts} attempts: {ex.Unwrap().Message}. Terminating.");
+                    Console.WriteLine($"{DateTime.Now}  Could not {description} after {maxAttempts} attempts: {ex.Unwrap().Message}. Terminating.");
                     Environment.Exit(1);
                 }
             }
@@ -253,7 +253,7 @@ namespace condeco_cli
             //Read once, with retries: this goes through GetGrid (a POST), and a timed-out/canceled read
             //here previously crashed the whole run with an unhandled AggregateException. GetBookingWindow()
             //returns both ends from a single grid read.
-            var initialWindow = ReadBookingWindowWithRetries(condeco);
+            var initialWindow = ReadWithRetries(() => condeco.GetBookingWindow(), "read the booking window");
             var startBookingFrom = initialWindow.StartDate;
             var bookUntil = initialWindow.EndDate;
 
@@ -786,7 +786,7 @@ namespace condeco_cli
             NonInteractiveLogin(condeco);
 
             var today = DateOnly.FromDateTime(DateTime.Now);
-            var upcomingBookings = condeco.GetUpcomingBookings(today);
+            var upcomingBookings = ReadWithRetries(() => condeco.GetUpcomingBookings(today), "read your upcoming bookings");
 
             var checkinsToPerform = upcomingBookings
                                     .Where(booking => booking.BookingStartDate.Date == DateTime.Now.Date)   //the mobile API can only check in for today
@@ -824,18 +824,29 @@ namespace condeco_cli
                         }
                         Console.Write($": ");
 
-                        (var checkinSuccessful, var bookingStatusStr) = condeco.CheckIn(upcomingBooking);
+                        try
+                        {
+                            var checkinResult = condeco.CheckIn(upcomingBooking);
 
-                        if (checkinSuccessful)
-                        {
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"Success");
-                            Console.ForegroundColor = OriginalConsoleColour;
+                            if (checkinResult.Success)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"Success");
+                                Console.ForegroundColor = OriginalConsoleColour;
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine($"Unsuccessful ({checkinResult.BookingStatusStr})");
+                                Console.ForegroundColor = OriginalConsoleColour;
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
+                            //One flaky check-in (timeout / transient failure) must not abort the rest of
+                            //the batch, and a raw AggregateException must not crash the run.
                             Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"Unsuccessful ({bookingStatusStr})");
+                            Console.WriteLine($"Unsuccessful ({ex.Unwrap().Message})");
                             Console.ForegroundColor = OriginalConsoleColour;
                         }
                     });
@@ -860,7 +871,17 @@ namespace condeco_cli
             var condecoWeb = new CondecoWeb(httpClientFactory, config.Account.BaseUrl);
             NonInteractiveLogin(condecoWeb);
 
-            condecoWeb.Dump();
+            try
+            {
+                condecoWeb.Dump();
+            }
+            catch (Exception ex)
+            {
+                //A dump is one long sequence of blocking reads; report the root cause cleanly rather than
+                //crashing with an AggregateException stack trace.
+                Console.WriteLine($"{DateTime.Now}  Dump failed: {ex.Unwrap().Message}");
+                Environment.Exit(1);
+            }
         }
 
         static CondecoCliConfig? config;
