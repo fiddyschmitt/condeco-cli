@@ -96,7 +96,34 @@ namespace condeco_cli
 
             if (!string.IsNullOrEmpty(config.Account.Username))
             {
-                (loggedIn, errorMessage) = condeco.LogIn(config.Account.Username, config.Account.Password);
+                //A scheduled run's credentials are known-good, so a login failure on the username/password
+                //path is almost always a transient rollover-time fault rather than a wrong password: the
+                //login page served without its anti-forgery 'token' (a NullReferenceException in 1.6.x, now
+                //a clear "Could not find hidden input 'token' in HTML"), a login request that timed out
+                //("A task was canceled."), or the CONDECO/EliteSession cookie briefly not being issued. None
+                //of those are HTTP transport errors, so the RetryHandler does not cover them - retry the
+                //whole sign-in a few times before giving up, rather than skipping the entire week's booking
+                //on the first blip.
+                const int maxLoginAttempts = 5;
+                var loginRetryDelay = TimeSpan.FromSeconds(5);
+
+                for (var attempt = 1; attempt <= maxLoginAttempts; attempt++)
+                {
+                    var loginResult = condeco.LogIn(config.Account.Username, config.Account.Password);
+                    loggedIn = loginResult.Success;
+                    errorMessage = loginResult.ErrorMessage;
+
+                    if (loggedIn)
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxLoginAttempts)
+                    {
+                        Console.WriteLine($"{DateTime.Now}  Login attempt {attempt} of {maxLoginAttempts} failed ({errorMessage}). Retrying in {loginRetryDelay.TotalSeconds:N0}s...");
+                        Thread.Sleep(loginRetryDelay);
+                    }
+                }
             }
             else if (config.Account.IsSsoAccount)
             {
