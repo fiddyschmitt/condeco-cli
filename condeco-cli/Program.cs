@@ -179,6 +179,36 @@ namespace condeco_cli
             }
         }
 
+        //The initial booking-window read runs once, before the rollover-wait watcher starts. Like the
+        //watcher's read it calls GetGrid (a POST), which can throw on a timed-out/canceled request - an
+        //unhandled AggregateException crashed the whole run this way in 1.6.x - or surface a 401 that the
+        //ReAuthHandler refreshed but (being a POST) could not replay. Retry a few times so a single blip
+        //doesn't abort the night; if it still can't be read, terminate with a message rather than a stack
+        //trace. The watcher in RunAutoBook has the same resilience for the ongoing polling.
+        static (DateTime StartDate, DateTime EndDate) ReadBookingWindowWithRetries(ICondeco condeco)
+        {
+            const int maxAttempts = 5;
+            var retryDelay = TimeSpan.FromSeconds(5);
+
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return condeco.GetBookingWindow();
+                }
+                catch (Exception ex) when (attempt < maxAttempts)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window (attempt {attempt} of {maxAttempts}, will retry): {ex.Message}");
+                    Thread.Sleep(retryDelay);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window after {maxAttempts} attempts: {ex.Message}. Terminating.");
+                    Environment.Exit(1);
+                }
+            }
+        }
+
         static void RunAutoBook(BaseOptions opts)
         {
             var testingRollover = false;
@@ -220,8 +250,12 @@ namespace condeco_cli
             //from it.
             condeco.SetBookingScope(config.Bookings.Select(booking => (booking.Location, booking.Group)));
 
-            var startBookingFrom = condeco.GetBookingWindowStartDate();
-            var bookUntil = condeco.GetBookingWindowEndDate();
+            //Read once, with retries: this goes through GetGrid (a POST), and a timed-out/canceled read
+            //here previously crashed the whole run with an unhandled AggregateException. GetBookingWindow()
+            //returns both ends from a single grid read.
+            var initialWindow = ReadBookingWindowWithRetries(condeco);
+            var startBookingFrom = initialWindow.StartDate;
+            var bookUntil = initialWindow.EndDate;
 
             var originalStartDate = startBookingFrom;
             var originalEndDate = bookUntil;
