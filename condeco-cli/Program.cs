@@ -198,12 +198,12 @@ namespace condeco_cli
                 }
                 catch (Exception ex) when (attempt < maxAttempts)
                 {
-                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window (attempt {attempt} of {maxAttempts}, will retry): {ex.Message}");
+                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window (attempt {attempt} of {maxAttempts}, will retry): {ex.Unwrap().Message}");
                     Thread.Sleep(retryDelay);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window after {maxAttempts} attempts: {ex.Message}. Terminating.");
+                    Console.WriteLine($"{DateTime.Now}  Could not read the booking window after {maxAttempts} attempts: {ex.Unwrap().Message}. Terminating.");
                     Environment.Exit(1);
                 }
             }
@@ -292,7 +292,7 @@ namespace condeco_cli
                                     }
                                     catch (Exception ex)
                                     {
-                                        Console.WriteLine(ex.Message);
+                                        Console.WriteLine(ex.Unwrap().Message);
                                         Environment.Exit(1);
                                     }
 
@@ -460,7 +460,7 @@ namespace condeco_cli
                             {
                                 //Any other error (transient transport, degraded server) is also retried -
                                 //the watcher must survive until the window opens or the overall wait elapses.
-                                message = $"Error while watching for the new booking window (will retry): {ex.Message}";
+                                message = $"Error while watching for the new booking window (will retry): {ex.Unwrap().Message}";
                             }
 
                             if (message != lastWatchError)
@@ -556,7 +556,7 @@ namespace condeco_cli
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"{DateTime.Now}  Error while firing speculative volleys: {ex.Message}.");
+                                Console.WriteLine($"{DateTime.Now}  Error while firing speculative volleys: {ex.Unwrap().Message}.");
                             }
                         }, TaskCreationOptions.LongRunning);
 
@@ -568,7 +568,7 @@ namespace condeco_cli
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"{DateTime.Now}  Error while calculating duration until hour rolls over: {ex.Message}.");
+                        Console.WriteLine($"{DateTime.Now}  Error while calculating duration until hour rolls over: {ex.Unwrap().Message}.");
                     }
                 }, TaskCreationOptions.LongRunning);
 
@@ -651,7 +651,7 @@ namespace condeco_cli
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{DateTime.Now}  Error while monitoring task completion: {ex.Message}.");
+                    Console.WriteLine($"{DateTime.Now}  Error while monitoring task completion: {ex.Unwrap().Message}.");
                 }
             }
 
@@ -767,7 +767,7 @@ namespace condeco_cli
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{DateTime.Now}  Error during logout (ignored): {ex.Message}");
+                Console.WriteLine($"{DateTime.Now}  Error during logout (ignored): {ex.Unwrap().Message}");
             }
         }
 
@@ -997,7 +997,7 @@ namespace condeco_cli
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{DateTime.Now}  Auto-update check failed: {ex.Message}");
+                Console.WriteLine($"{DateTime.Now}  Auto-update check failed: {ex.Unwrap().Message}");
             }
         }
 

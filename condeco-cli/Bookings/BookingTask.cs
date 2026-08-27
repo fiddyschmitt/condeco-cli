@@ -1,5 +1,6 @@
 ﻿using condeco_cli.Model;
 using libCondeco;
+using libCondeco.Extensions;
 using libCondeco.Model.Space;
 using System;
 using System.Collections.Generic;
@@ -208,7 +209,7 @@ namespace condeco_cli.Bookings
                     }
                     catch (Exception ex)
                     {
-                        var innermost = Unwrap(ex);
+                        var innermost = ex.Unwrap();
 
                         if (SessionExpiredException.IsSessionExpired(innermost))
                         {
@@ -352,7 +353,7 @@ namespace condeco_cli.Bookings
                 //Still discarded, but surfaced: a persistent failure (proxy/DNS/not-logged-in) would
                 //otherwise make every write fail silently for the whole window. Consecutive repeats of
                 //the same message are suppressed to avoid a line per day per round.
-                var message = Unwrap(ex).Message;
+                var message = ex.Unwrap().Message;
                 if (message != lastLoggedWriteError)
                 {
                     lastLoggedWriteError = message;
@@ -384,7 +385,7 @@ namespace condeco_cli.Bookings
                                         var confirmed = condeco.BookingSuccessful(Room, date, Booking.BookFor, timeoutSources[index].Token);
                                         return (date, confirmed);
                                     }
-                                    catch (Exception ex) when (!SessionExpiredException.IsSessionExpired(Unwrap(ex)))
+                                    catch (Exception ex) when (!SessionExpiredException.IsSessionExpired(ex.Unwrap()))
                                     {
                                         //Transient read failure during the storm (timeout / 500). Treat as
                                         //not-yet-confirmed; we'll re-check next round.
@@ -416,7 +417,7 @@ namespace condeco_cli.Bookings
                 //check can only be a session expiry; surface one so the main loop can log it.
                 var sessionExpiry = checks
                                         .Where(check => check.IsFaulted)
-                                        .Select(check => Unwrap(check.Exception!))
+                                        .Select(check => check.Exception!.Unwrap())
                                         .FirstOrDefault();
                 if (sessionExpiry != null)
                 {
@@ -430,17 +431,6 @@ namespace condeco_cli.Bookings
                     timeoutSource.Dispose();
                 }
             }
-        }
-
-        private static Exception Unwrap(Exception ex)
-        {
-            var innermost = ex;
-            while (innermost is AggregateException aggregate && aggregate.InnerException != null)
-            {
-                innermost = aggregate.InnerException;
-            }
-
-            return innermost;
         }
 
         public override string ToString()
