@@ -154,13 +154,26 @@ namespace condeco_cli.Bookings
 
             //A booking that reads back as confirmed can still disappear minutes later: on 3-Aug-2026 three
             //of Georgia's five days were confirmed at 00:00:13 and had been replaced by different booking
-            //ids by the time the run was inspected. So don't finish the moment everything confirms - hold,
-            //re-read, and only then declare success. Kept well inside the overall window.
-            var reverifyDelay = TimeSpan.FromSeconds(90);
-            if (reverifyDelay > maxDuration / 3)
+            //ids by the time the run was inspected, and on 31-Aug-2026 Jasmijn's L15-D99 confirmed at 00:05
+            //but was gone from the server by the 00:40 dump. A single 90s re-check exits before those later
+            //drops. So after everything first confirms, re-read at increasing offsets - front-loaded where
+            //drops cluster, cheaply extending the tail - and only finish once the last check still finds
+            //every day. Offsets are clamped to a third of the window so the whole re-verify still fits.
+            var reverifyOffsets = new List<TimeSpan>();
+            foreach (var offset in new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(8) })
             {
-                reverifyDelay = maxDuration / 3;
+                if (offset <= maxDuration / 3)
+                {
+                    reverifyOffsets.Add(offset);
+                }
             }
+            if (reverifyOffsets.Count == 0)
+            {
+                //Window too small for even the first check - fall back to one clamped re-read.
+                reverifyOffsets.Add(maxDuration / 3);
+            }
+
+            var reverifySchedule = string.Join(", ", reverifyOffsets.Select(offset => offset.TotalSeconds < 60 ? $"{offset.TotalSeconds:0}s" : $"{offset.TotalMinutes:0.#}m"));
 
             Task.Factory.StartNew(() =>
             {
@@ -168,6 +181,7 @@ namespace condeco_cli.Bookings
 
                 var confirmedDates = new HashSet<DateOnly>();
                 DateTime? allConfirmedSince = null;
+                var nextCheckIndex = 0;
 
                 //Each round: (re)submit every still-unconfirmed day, discard the responses, then read back
                 //the confirmations. The response body is unreliable at the rollover (500 page / empty / id /
@@ -183,9 +197,12 @@ namespace condeco_cli.Bookings
                         SubmitWrites(confirmedDates, requestTimeout, bookingDescription);
                         CollectConfirmations(confirmedDates, requestTimeout);
 
-                        //Everything has been confirmed for long enough - read every day once more before
-                        //declaring success, in case the server has since dropped any of them.
-                        if (allConfirmedSince != null && DateTime.Now - allConfirmedSince >= reverifyDelay)
+                        //Everything is confirmed - re-read at the next scheduled offset before declaring
+                        //success, in case the server has since dropped any day. A clean check advances to
+                        //the next offset (the last one finishes the task); a check that finds a day missing
+                        //re-books it and restarts the schedule.
+                        if (allConfirmedSince != null && nextCheckIndex < reverifyOffsets.Count
+                                && DateTime.Now - allConfirmedSince >= reverifyOffsets[nextCheckIndex])
                         {
                             var stillBooked = new HashSet<DateOnly>();
                             CollectConfirmations(stillBooked, requestTimeout);
@@ -195,16 +212,22 @@ namespace condeco_cli.Bookings
                             {
                                 var lostStr = string.Join(", ", lost.Select(date => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
                                 Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  {lost.Count} confirmed day(s) disappeared after being booked ({lostStr}). Re-booking.");
-                            }
 
-                            confirmedDates.Clear();
-                            foreach (var date in stillBooked)
+                                confirmedDates.Clear();
+                                foreach (var date in stillBooked)
+                                {
+                                    confirmedDates.Add(date);
+                                }
+
+                                //Re-book the lost day(s), then re-verify from the first offset once they confirm again.
+                                allConfirmedSince = null;
+                                nextCheckIndex = 0;
+                            }
+                            else
                             {
-                                confirmedDates.Add(date);
+                                nextCheckIndex++;
+                                reverifiedClean = nextCheckIndex >= reverifyOffsets.Count;
                             }
-
-                            reverifiedClean = lost.Count == 0;
-                            allConfirmedSince = null;
                         }
                     }
                     catch (Exception ex)
@@ -233,9 +256,9 @@ namespace condeco_cli.Bookings
 
                     var allConfirmed = confirmedDates.Count == Dates.Count;
 
-                    //Success is only declared once a re-read, taken reverifyDelay after everything first
-                    //confirmed, still finds every day booked. Terminal states are set via TryTransition so
-                    //a prune that landed mid-round stays NotRequired.
+                    //Success is only declared once a re-read at every scheduled offset after everything
+                    //first confirmed still finds every day booked. Terminal states are set via TryTransition
+                    //so a prune that landed mid-round stays NotRequired.
                     if (reverifiedClean)
                     {
                         Result.AttemptsFinished = DateTime.Now;
@@ -246,11 +269,13 @@ namespace condeco_cli.Bookings
                     if (allConfirmed && allConfirmedSince == null)
                     {
                         allConfirmedSince = DateTime.Now;
-                        Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  All {Dates.Count} day(s) confirmed. Re-checking in {reverifyDelay.TotalSeconds:N0}s before finishing.");
+                        nextCheckIndex = 0;
+                        Console.WriteLine($"{DateTime.Now}  [{bookingDescription}]  All {Dates.Count} day(s) confirmed. Re-checking at {reverifySchedule} before finishing.");
                     }
                     else if (!allConfirmed)
                     {
                         allConfirmedSince = null;
+                        nextCheckIndex = 0;
                     }
 
                     if (DateTime.Now > stopAt)
@@ -271,14 +296,15 @@ namespace condeco_cli.Bookings
                     //took a contested day within ~6 booking ids of ours).
                     var sleepDuration = TimeSpan.FromSeconds(5);
 
-                    //While waiting out the re-check there is nothing to submit or read, so wait it out in
-                    //one go rather than spinning through no-op rounds.
-                    if (allConfirmedSince != null)
+                    //While waiting for the next re-check there is nothing to submit or read, so sleep
+                    //straight to it rather than spinning through no-op rounds.
+                    if (allConfirmedSince != null && nextCheckIndex < reverifyOffsets.Count)
                     {
-                        var remainingHold = reverifyDelay - (DateTime.Now - allConfirmedSince.Value);
-                        if (remainingHold > sleepDuration)
+                        var nextCheckAt = allConfirmedSince.Value + reverifyOffsets[nextCheckIndex];
+                        var untilNextCheck = nextCheckAt - DateTime.Now;
+                        if (untilNextCheck > sleepDuration)
                         {
-                            sleepDuration = remainingHold;
+                            sleepDuration = untilNextCheck;
                         }
                     }
 

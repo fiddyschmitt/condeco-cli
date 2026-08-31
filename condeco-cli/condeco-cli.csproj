@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <!-- Single source of truth for the app version. Program.PROGRAM_VERSION reads this back from the
          assembly at runtime (banner, User-Agent, auto-update check). Bump here for each release. -->
-    <Version>1.7.0</Version>
+    <Version>1.7.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
