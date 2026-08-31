@@ -17,7 +17,17 @@ namespace condeco_cli
     internal class Program
     {
         const string PROGRAM_NAME = "condeco-cli";
-        internal const string PROGRAM_VERSION = "1.7.0";
+
+        //The version lives in one place - <Version> in condeco-cli.csproj - and is read back from the
+        //assembly here, so the banner, the User-Agent and the auto-update check can never disagree with it.
+        //Major.Minor.Build (e.g. "1.7.0") keeps it Version.TryParse-able for UpdateChecker.IsNewerVersion.
+        internal static readonly string PROGRAM_VERSION = GetProgramVersion();
+
+        static string GetProgramVersion()
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return version == null ? "0.0.0" : $"{version.Major}.{version.Minor}.{version.Build}";
+        }
 
         //FPS 15/11/2025: The condeco API can be called at most 50 times per second, otherwise it returns "API calls quota exceeded! maximum admitted 50 per Second."
         private static IHttpClientFactory httpClientFactory = null!;
